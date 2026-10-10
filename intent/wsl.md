@@ -12,13 +12,29 @@
 | 内存/CPU | `.wslconfig` 限 16GB / 12 核，swap 8GB |
 | GPU | NVIDIA RTX 5060 Laptop，`/dev/dxg` 直通可用 |
 
-## ⚠️ 最关键的一项：网络模式必须是 mirrored
+## ⚠️ 网络拓扑：mirrored 或 NAT+portproxy **都可行**（别只看配置就下结论）
 
-`.wslconfig`（Windows 侧，`C:\Users\<user>\.wslconfig`）：
+**真正的要求只有一条**：`~/.proxy.sh` 的候选端口里，至少有一个**真能出网**。
+用哪种 WSL 网络模式都可以：
+
+| 拓扑 | `.wslconfig` | 代理该怎么监听 | WSL 侧访问地址 |
+|---|---|---|---|
+| **mirrored** | `networkingMode=mirrored` | `127.0.0.1:7897` 即可 | `127.0.0.1:7897`（直通宿主） |
+| **NAT + portproxy** | 不设 `networkingMode`（默认 NAT） | 宿主全接口 / portproxy | 默认网关 IP，如 `172.18.80.1:7898` |
+
+NAT 模式下 `127.0.0.1` 是 WSL 自己的，所以**必须**经网关 IP 访问宿主端口 ——
+**这不是故障**，`~/.proxy.sh` v6 会把两种地址都试一遍。
+
+**🔴 别把「不是 mirrored」直接判为故障**（`apply.sh` 早期版本就是这么误报的）。
+以 `proxy_test` 或 `apply.sh --check` 的**实测出网**为准。
+2026-10-10 实测一台 NAT+portproxy 的机器：`github.com → 200`、`registry.npmjs.org → 200`，
+完全正常，**不需要**改 `.wslconfig`、更不需要 `wsl --shutdown`。
+
+旧机 `.wslconfig` 参考值（改用 NAT+portproxy 时删掉 `networkingMode` 那行即可）：
 
 ```ini
 [wsl2]
-networkingMode=mirrored      # ← 关键！不是 mirrored 则代理机制全废
+networkingMode=mirrored
 memory=16GB
 swap=8GB
 processors=12
@@ -28,11 +44,8 @@ autoMemoryReclaim=dropcache
 sparseVhd=true
 ```
 
-**为什么必须 mirrored**：mirrored 模式下 WSL 内 `127.0.0.1` **直通 Windows**，
-所以 WSL 能用 Windows 上跑的代理（如 `127.0.0.1:7897`）。
-NAT 模式下 `127.0.0.1` 是 WSL 自己的，代理不可达。
-
-**改后需 `wsl --shutdown` 生效。**
+**改 `.wslconfig` 后需 `wsl --shutdown` 生效** —— 它会杀掉 WSL 内所有进程
+（含 IDE remote server、litellm 等），**非必要不要动**。
 
 ## 代理机制（本项目最精妙的部分）
 
@@ -40,23 +53,39 @@ NAT 模式下 `127.0.0.1` 是 WSL 自己的，代理不可达。
 
 | 端口 | 用途 |
 |---|---|
-| **7897** | 星连 SingLink 内核 singcore 的 mixed 端口 —— **首选** |
+| **7897** | 星连 SingLink 内核 singcore 的 mixed 端口（**mirrored 拓扑**下的首选） |
+| **7898** | 星连 portproxy 口（**NAT 拓扑**下的首选，v4 起 7892→7898） |
 | 7899 | Clash Verge 备胎（已从 7892 挪开，避免和星连打架） |
 | 7892 | 历史遗留位（超实惠 sing-box 时代）—— 仅兜底 |
 
-**若新机代理软件端口不同，改 `~/.proxy.sh` 的 `CANDIDATE_PORTS`。**
+**若新机代理软件端口不同**，改候选端口列表 —— ⚠️ **两代文件变量名不同，别 grep 错**：
+
+| 文件 | 变量名 | 值 |
+|---|---|---|
+| 本仓库模板 `templates/proxy.sh`（**部署用这个**） | `CANDIDATE_PORTS` | `"7897 7898 7899 7892"` |
+| 旧机在跑的 v6 版（244 行） | `_wsl_candidates` | `(7898 7899 7892 7897)` |
 
 ### 设计要点（不要简化掉）
 
 1. **真请求探活**，不是「端口开着」：
    端口被别的程序占着也算开着，只有真发一次请求拿到 204/200 才能拆穿。
    ```bash
-   _port_ok() { curl -s -o /dev/null -w '%{http_code}' --max-time 6 -x "http://$PROXY_HOST:$1" "$PROBE_URL"; }
+   # 本仓库模板 templates/proxy.sh 的实现（推荐部署这个）
+   _wsl_tcp_ok()   { ... }   # 第一层：TCP 预检，快速排除死端口（省掉逐个 HTTP 白等）
+   _host_port_ok() { ... }   # 第二层：真发请求，200/204/301/302 才算通
+   _port_ok()      { ... }   # 跨「候选宿主地址」探测，命中即定 PROXY_HOST
    ```
+   ⚠️ 旧机在跑的 v6 版函数名是 `_wsl_tcp_ok` / `_wsl_http_ok`，且宿主写死
+   `127.0.0.1`（只支持 mirrored）。两代并存，grep 时注意。
 2. **优雅降级**：代理没启动时直连，而不是所有请求一起断。
 3. **git 代理同步 + 内网例外**：`gitlab-ap-office.immotors.com` 必须直连
    （走代理会把域名丢给上游解析 → 超时）。
 4. **清理 Clash 时代遗留**：指向废弃端口（`:7892` / `:8118`）的 git URL 分节会被自动清掉。
+5. **🔴 宿主地址只能用「全局副作用」传出，不能用 `$(...)`**：
+   `PROXY_HOST` 是探测函数设置的全局变量。若调用方写成 `chosen="$(detect_port)"`，
+   **命令替换会开子 shell，赋值直接丢** → NAT 下得到「端口对了、地址仍是
+   `127.0.0.1`」的死 URL（实测过这个 bug）。模板里用 `_proxy_detect`
+   直接设置 `PROXY_HOST`/`PROXY_PORT` 来规避。
 
 ### ⚠️ 幽灵代理陷阱（`wsl-proxy-autofix v7`，勿删）
 
@@ -139,7 +168,7 @@ sudo apt install -y <按 packages.md 的 apt 清单>
 # 2. 用户级 dotfile（追加，不要覆盖）
 cp templates/bashrc.d/*.sh ~/.bashrc.d/     # 或按块追加到 ~/.bashrc
 cp templates/profile.d/*.sh ~/.profile.d/   # 同上
-cp <本仓库的 proxy.sh>  ~/.proxy.sh         # 需从旧机取（不在 templates/，见下）
+cp templates/proxy.sh  ~/.proxy.sh          # 已在 templates/ 内，无需从旧机取
 
 # 3. systemd 单元
 sudo cp templates/systemd/*.service /etc/systemd/system/

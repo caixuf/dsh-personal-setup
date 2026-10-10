@@ -48,9 +48,12 @@ if [ -f "$WSL_CFG" ]; then
     echo "路径: $WSL_CFG"
     grep -vE '^\s*#|^\s*$' "$WSL_CFG"
     echo "--- 关键项检查 ---"
-    grep -q 'networkingMode\s*=\s*mirrored' "$WSL_CFG" \
-        && echo "  networkingMode=mirrored  OK（代理机制的前提）" \
-        || echo "  ⚠️ networkingMode 不是 mirrored —— 代理会失效"
+    if grep -q 'networkingMode\s*=\s*mirrored' "$WSL_CFG"; then
+        echo "  networkingMode=mirrored（WSL 内 127.0.0.1 直通宿主）"
+    else
+        echo "  未设 networkingMode → NAT 模式（代理须在宿主 portproxy 上，经网关 IP 访问）"
+        echo "    注：NAT 本身不代表代理失效，以本次「候选代理端口」的实测出网为准"
+    fi
 else
     echo "⚠️ 未找到 .wslconfig（路径探测: $WSL_CFG）"
 fi
@@ -58,13 +61,23 @@ fi
 hr "网络与代理"
 echo "--- 默认路由 ---"
 ip route show default 2>/dev/null | sed 's/^/  /'
-echo "--- 候选代理端口 ---"
-for p in 7897 7899 7892; do
-    if timeout 2 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/$p" 2>/dev/null; then
-        echo "  $p  TCP可达"
-    else
-        echo "  $p  不通"
-    fi
+echo "--- 候选代理端口（localhost 与宿主网关两处，均做真实出网探测）---"
+GW=$(ip route show default 2>/dev/null | awk '/^default/{print $3; exit}')
+PORTS=$(grep -oE '_wsl_candidates=\([^)]*\)' "$HOME/.proxy.sh" 2>/dev/null | sed 's/.*(\(.*\))/\1/')
+[ -n "$PORTS" ] || PORTS="7897 7898 7899 7892"
+echo "  默认网关 : ${GW:-未知}"
+echo "  候选端口 : $PORTS  （取自 ~/.proxy.sh 的 _wsl_candidates）"
+for h in 127.0.0.1 "$GW"; do
+    [ -n "$h" ] || continue
+    for p in $PORTS; do
+        if timeout 2 bash -c "cat < /dev/null > /dev/tcp/$h/$p" 2>/dev/null; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 \
+                   -x "http://$h:$p" https://www.gstatic.com/generate_204 2>/dev/null)
+            printf '  %-18s TCP可达  出网=%s\n' "$h:$p" "${code:-失败}"
+        else
+            printf '  %-18s TCP不通\n' "$h:$p"
+        fi
+    done
 done
 echo "--- 代理环境变量 ---"
 for v in http_proxy https_proxy all_proxy no_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY; do

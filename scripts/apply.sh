@@ -69,15 +69,42 @@ check() {
         say "$f : $n 个块"
     done
 
-    hr "WSL 网络模式（代理机制前提）"
+    hr "WSL 网络拓扑 + 代理真实可达性"
     WINUSER=$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d '\r')
     CFG="/mnt/c/Users/$WINUSER/.wslconfig"
+    GW=$(ip route show default 2>/dev/null | awk '/^default/{print $3; exit}')
     if [ -f "$CFG" ]; then
-        grep -q 'networkingMode\s*=\s*mirrored' "$CFG" \
-            && say "networkingMode=mirrored ✓" \
-            || warn "不是 mirrored —— 代理会失效，需改后 wsl --shutdown"
+        if grep -q 'networkingMode\s*=\s*mirrored' "$CFG"; then
+            say "networkingMode=mirrored —— WSL 内 127.0.0.1 直通宿主"
+        else
+            say "未设 networkingMode → NAT 模式（本机网关 ${GW:-未知}）"
+            say "  代理须监听在宿主的 portproxy/全接口上，WSL 侧经网关 IP 访问。"
+            say "  ⚠️ 这**不是**故障 —— 以下面的实测出网为准，不要仅凭此项去改 .wslconfig。"
+        fi
     else
         warn "未找到 $CFG"
+    fi
+
+    # 真探活：候选端口 × {127.0.0.1, 默认网关}
+    # 只看配置、或只看「端口开着」都会被误导（端口可能被别的程序占着，NAT 下 localhost 也不通）
+    _cands=$(grep -oE '_wsl_candidates=\([^)]*\)' "$HOME/.proxy.sh" 2>/dev/null | sed 's/.*(\(.*\))/\1/')
+    [ -n "$_cands" ] || _cands="7897 7898 7899 7892"
+    say "候选端口（取自 ~/.proxy.sh，缺省 7897 7898 7899 7892）: $_cands"
+    _hit=""
+    for _h in 127.0.0.1 "$GW"; do
+        [ -n "$_h" ] || continue
+        for _p in $_cands; do
+            _code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 \
+                    -x "http://$_h:$_p" https://www.gstatic.com/generate_204 2>/dev/null)
+            case "$_code" in
+                200|204|301|302) say "  ✓ $_h:$_p 出网正常 (HTTP $_code)"; [ -n "$_hit" ] || _hit="$_h:$_p" ;;
+            esac
+        done
+    done
+    if [ -n "$_hit" ]; then
+        say "代理可用 ✓（首个命中 $_hit）"
+    else
+        warn "所有候选端口都不通 —— 检查宿主代理软件是否已启动、端口是否与 ~/.proxy.sh 一致"
     fi
 
     hr "systemd 是否有阻塞任务"
@@ -93,7 +120,8 @@ check() {
     say "1. 先跑 scripts/audit.sh，把输出与 intent/packages.md 对比，补齐 apt/npm/pip 包"
     say "2. 再跑 scripts/apply.sh --dotfiles 落地 dotfile 片段"
     say "3. 手工处理密钥与服务（intent/secrets.md、intent/services.md）"
-    say "4. 最后跑 scripts/apply.sh --check 复查"
+    say "4. DSH 插件侧见 intent/dsh.md（含 free-model 的 npm 取法、plugin_manager 假失败的判定与修复）"
+    say "5. 最后跑 scripts/apply.sh --check 复查"
 }
 
 do_dotfiles() {

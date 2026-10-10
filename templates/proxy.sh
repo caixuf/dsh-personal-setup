@@ -3,45 +3,75 @@
 # 2026-09-26：宿主代理从 Clash Verge 切到 星连 SingLink
 #
 # 端口约定（各占各的，不许互相改）：
-#   7897  星连 SingLink 内核 singcore 的本地 mixed 端口  —— 首选
+#   7897  星连 SingLink 内核 singcore 的本地 mixed 端口（mirrored 拓扑首选）
+#   7898  星连 portproxy 口（NAT 拓扑首选；v4 起 7892→7898）
 #   7899  Clash Verge 备胎（已从 7892 挪开，避免和星连打架）
 #   7892  历史遗留位（超实惠 sing-box 时代）—— 只作兜底
+#
+# 宿主地址**自动探测**，两种 WSL 拓扑都能用：
+#   mirrored → 127.0.0.1 直通 Windows
+#   NAT      → 127.0.0.1 是 WSL 自己的，必须走默认网关 IP（如 172.18.80.1）
+# 所以「不是 mirrored」不代表代理不可用 —— 别据此去改 .wslconfig。
 #
 # 判定标准不是「端口开着」，而是真发一次请求拿到 204/200 ——
 # 端口被别的程序占着时也算"开着"，只有真请求能拆穿。
 #
 # 用法：
-#   proxy_on          # 自动探测并开启（按候选顺序取第一个通的）
+#   proxy_on          # 自动探测并开启（宿主×端口 逐个试，取第一个真通的）
 #   proxy_on 7897     # 强制指定端口
 #   proxy_off         # 关闭（同时清掉 git 的 http.proxy）
 #   proxy_test        # 状态自检
 #   proxy_doctor      # WSL 网络体检
 #
-# WSL 是 mirrored 模式，127.0.0.1 直通 Windows，所以这里看不到 Windows 的监听，
-# 必须用真实 TCP 建连 + 真实 HTTP 请求来判断。
+# 注意：这里看不到 Windows 的监听列表，必须用真实 TCP 建连 + 真实 HTTP 请求判断。
 
-PROXY_HOST="127.0.0.1"
-CANDIDATE_PORTS="7897 7899 7892"
+PROXY_HOST="127.0.0.1"          # 由探测结果覆盖（NAT 下会变成网关 IP）
+CANDIDATE_PORTS="7897 7898 7899 7892"
+
+# 候选宿主地址：先 127.0.0.1（mirrored），再默认网关（NAT）。每次现算，避免网络变化后过期。
+_proxy_hosts() {
+    printf '127.0.0.1 %s' "$(ip route show default 2>/dev/null | awk '/^default/{print $3; exit}')"
+}
 PROXY_PORT=""          # 由探测结果填充，初始为空
 
 PROBE_URL="https://www.gstatic.com/generate_204"
 PROXY_BYPASS="localhost,127.0.0.1,::1,.local,.immotors.com,.immotors.sgp1.com,10.0.0.0/8,172.16.0.0/12,172.100.0.0/16,192.168.0.0/16"
 INTRA_GIT_HOST="gitlab-ap-office.immotors.com"
 
-# 真请求探活：$1=端口
-_port_ok() {
+# 快速 TCP 可达性预检：先花 <2s 排除死端口，避免逐个白等 HTTP 超时。
+# （NAT 拓扑下 127.0.0.1 永远不通，没有这层预检会白白多等好几秒 × 候选数）
+_wsl_tcp_ok() {
+    timeout 2 bash -c "cat < /dev/null > /dev/tcp/$1/$2" 2>/dev/null
+}
+
+# 真请求探活：$1=宿主地址 $2=端口
+_host_port_ok() {
+    _wsl_tcp_ok "$1" "$2" || return 1
     local code
     code=$(env -u http_proxy -u https_proxy -u all_proxy \
                 -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
            curl -s -o /dev/null -w '%{http_code}' --max-time 6 \
-                -x "http://${PROXY_HOST}:$1" "$PROBE_URL" 2>/dev/null)
-    [ "$code" = "204" ] || [ "$code" = "200" ]
+                -x "http://$1:$2" "$PROBE_URL" 2>/dev/null)
+    case "$code" in 200|204|301|302) return 0 ;; *) return 1 ;; esac
 }
 
-detect_port() {
+# 端口探活：依次试候选宿主地址，命中即把 PROXY_HOST 定到该地址。$1=端口
+_port_ok() {
+    local h
+    for h in $(_proxy_hosts); do
+        [ -n "$h" ] || continue
+        if _host_port_ok "$h" "$1"; then PROXY_HOST="$h"; return 0; fi
+    done
+    return 1
+}
+
+# 探测可用后端：成功则**直接设置** PROXY_HOST / PROXY_PORT 并返回 0。
+# ⚠️ 刻意不经 `$(...)` 传值 —— 命令替换是子 shell，宿主地址的赋值会丢，
+#    NAT 下会退化成「端口对了、地址仍是 127.0.0.1」的死 URL。
+_proxy_detect() {
     local p
     for p in $CANDIDATE_PORTS; do
-        if _port_ok "$p"; then echo "$p"; return 0; fi
+        if _port_ok "$p"; then PROXY_PORT="$p"; return 0; fi
     done
     return 1
 }
@@ -67,13 +97,13 @@ _git_unset() {
 }
 
 proxy_on() {
-    local want="$1" chosen=""
+    local want="${1:-}" chosen=""
     if [ -n "$want" ]; then
         if _port_ok "$want"; then chosen="$want"; fi
     elif [ -n "$PROXY_PORT" ] && _port_ok "$PROXY_PORT"; then
         chosen="$PROXY_PORT"
-    else
-        chosen="$(detect_port)"
+    elif _proxy_detect; then
+        chosen="$PROXY_PORT"
     fi
 
     if [ -z "$chosen" ]; then
@@ -102,9 +132,7 @@ proxy_off() {
 
 proxy_port_alive() {
     if [ -n "$PROXY_PORT" ] && _port_ok "$PROXY_PORT"; then return 0; fi
-    local p
-    if p="$(detect_port)"; then PROXY_PORT="$p"; return 0; fi
-    return 1
+    _proxy_detect
 }
 
 proxy_test() {
@@ -114,10 +142,13 @@ proxy_test() {
     echo "  all_proxy  = ${all_proxy:-未设置}"
     echo "  no_proxy   = ${no_proxy:-未设置}"
     echo
-    echo "--- 候选端口实测（真发请求） ---"
-    local p
-    for p in $CANDIDATE_PORTS; do
-        if _port_ok "$p"; then echo "  ${PROXY_HOST}:${p}  通 OK"; else echo "  ${PROXY_HOST}:${p}  不通"; fi
+    echo "--- 候选宿主×端口实测（真发请求） ---"
+    local h p
+    for h in $(_proxy_hosts); do
+        [ -n "$h" ] || continue
+        for p in $CANDIDATE_PORTS; do
+            if _host_port_ok "$h" "$p"; then echo "  ${h}:${p}  通 OK"; else echo "  ${h}:${p}  不通"; fi
+        done
     done
     echo
     echo "--- 连通性 ---"
@@ -143,10 +174,13 @@ proxy_doctor() {
     fi
     echo "[3] DNS"
     grep -v '^#' /etc/resolv.conf 2>/dev/null | grep nameserver | sed 's/^/      /'
-    echo "[4] 候选代理端口"
-    local p
-    for p in $CANDIDATE_PORTS; do
-        if _port_ok "$p"; then echo "      ${p} 通 OK"; else echo "      ${p} 不通"; fi
+    echo "[4] 候选代理宿主×端口"
+    local h p
+    for h in $(_proxy_hosts); do
+        [ -n "$h" ] || continue
+        for p in $CANDIDATE_PORTS; do
+            if _host_port_ok "$h" "$p"; then echo "      ${h}:${p} 通 OK"; else echo "      ${h}:${p} 不通"; fi
+        done
     done
     echo "[5] git 代理"
     git config --global --get http.proxy 2>/dev/null | sed 's/^/      http.proxy = /'
