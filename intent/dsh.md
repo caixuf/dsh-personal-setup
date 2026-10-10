@@ -19,7 +19,7 @@ DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经�
 |---|---|---|
 | `@deepseek-ai/dsh-base` | 官方核心 | 必需 |
 | `@deepseek-ai/dsh-web-app` | Web 界面层 | 必需 |
-| `dsh-our-free-model` | 免费模型接入 | ⚠️ **`file:` 依赖，绝对路径，换机必改** |
+| `dsh-our-free-model` | 免费模型接入 | ✅ **npm 上也有**（`dsh-our-free-model@2.0.0`）；模板里那条 `file:` tgz 只是旧机私存副本，新机直接用 npm 版 |
 | `dsh-wsl-tool` | WSL 命令/路径/环境工具 | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor` |
 | `dsh-wsl-workspace` | 会话执行环境落地 WSL | 兼容 `0.2.0-rc.2` 已声明 |
 | `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | |
@@ -81,17 +81,39 @@ DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经�
 # 1. 确认 DSH 版本为 0.2.0-rc.2（版本不符时先问用户，不要硬装）
 dsh --version
 
+#    ⚠️ Desktop 便携版**不一定把 dsh 放进 PATH**（实测新机就没有）。
+#    找不到时二选一：
+#      a) 直接用内置 CLI：
+#         "%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" --version
+#      b) 读版本真值：
+#         resources/runtime/primary-runtime/runtime.json  →  "desktopVersion": "0.2.0-rc.2"
+
 # 2. 复制配置三件套
 cp templates/dsh/package.json       ~/.dsh/profiles/desktop/package.json
 cp templates/dsh/cordis.patch.yml   ~/.dsh/profiles/desktop/cordis.patch.yml
 
-# 3. 【必改】修正 file: 依赖的绝对路径
-#    把 C:/Users/<旧用户名>/dsh-plugin-packages/... 改成新机实际路径
-#    并把该 tgz 拷到新机对应位置
+# 3. 【重要】不要把模板里的 file: 依赖照抄到新机
+#    模板那条：
+#      "dsh-our-free-model": "file:C:/Users/20247/dsh-plugin-packages/dsh-our-free-model-2.0.0.tgz"
+#    指向旧机的私存 tgz —— 新机**没有这个文件**，照抄会让整个 install 失败。
+#    ✅ 正解：改用 npm 版（同一个包，同一个 2.0.0）
+#      "dsh-our-free-model": "^2.0.0"
+#    （2026-10-10 实测：npm 上有作者正式发布的 2.0.0，peer 窗口 ^0.2.0-rc.1 正好匹配 0.2.0-rc.2）
 
-# 4. 安装依赖
+# 4. 逐个装 bundle（不要指望一条 install 全搞定，见下方「假失败」）
+#    Desktop 版最省事的是直接用 DSH 的 plugin_manager 工具逐个 install_bundle
 dsh plugin --profile desktop install
 ```
+
+### `dsh-our-free-model` 的取法（换机必读）
+
+| 途径 | 说明 |
+|---|---|
+| **npm（推荐）** | `dsh-our-free-model@^2.0.0`，公开 registry，无需 tgz |
+| 旧机 tgz | `C:\Users\20247\dsh-plugin-packages\dsh-our-free-model-2.0.0.tgz`，**不在 `~/.dsh` 内，迁移易漏**；本仓库不含它 |
+
+两者是同一个包（维护者 `fish-under-sea`，`dsh.bundle.patch` 指向自带 `cordis.patch.yml`）。
+**优先 npm 版** —— 否则新机一定卡住。
 
 ## 验证
 
@@ -196,6 +218,47 @@ $pet="$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-whale-girl-pet"
 
 **装插件的最佳时机**：刚启动 DSH、页面尚未加载桌宠时（此时 `assets/` 未被持有）。
 
+## ⚠️ plugin_manager 装插件的两种「假失败」（2026-10-10 实测）
+
+**症状**：`install_bundle` 返回 `application: failed` 或超时，看起来装失败了。
+
+| 症状 | 实际原因 |
+|---|---|
+| `PostQueuedCompletionStatus: (6) 句柄无效` + `application: failed` | pnpm 已经打印 `Done in Ns`，但在 Windows 上收尾时崩溃 |
+| `dsh: pnpm printed nothing for 600000ms and was terminated` | pnpm 同样已 `Done`，但进程不退出，被 10 分钟看门狗杀掉 |
+
+**关键**：这两种情况下包**通常已完整落盘**，缺的只是清单登记
+（`package.json` 的 `dependencies`/`bundles`，或 `pnpm-lock.yaml`）。
+表现为「文件都在，但插件不加载」——**别急着重装或手工补文件，先判定**。
+
+**判定**（Windows 侧，`$d = "$env:USERPROFILE\.dsh\profiles\desktop"`）：
+
+```bash
+ls "$d/node_modules/<包名>"                    # 包在不在
+grep '<包名>' "$d/node_modules/.modules.yaml"  # pnpm 是否已登记
+grep '<包名>' "$d/pnpm-lock.yaml"              # 锁文件是否已登记
+```
+
+**修复 A —— 直接重试（首选）**：包已在盘上时 pnpm 会说 `Already up to date`，
+通常亚秒级完成，第二次就 `applied`。实测 `dsh-mnemon`、`dsh-our-free-model` 均如此。
+
+**修复 B —— 只差锁文件时用 `--lockfile-only`**：
+
+```bash
+# Desktop 便携版：用 DSH 内置 node + 自带 pnpm，避免 PATH 上没有 node/pnpm
+NODE="$LOCALAPPDATA/Programs/DeepSeek Harness/resources/runtime/primary-runtime/dependencies/node/bin/node.exe"
+PNPM="$LOCALAPPDATA/Programs/DeepSeek Harness/resources/runtime/pnpm/bin/pnpm.cjs"
+cd "$USERPROFILE/.dsh/profiles/desktop"
+"$NODE" "$PNPM" install --lockfile-only
+```
+
+`--lockfile-only` **不写 `node_modules`**，所以不会触发下面桌宠那种
+「pnpm 要 `rename` 包目录 → `assets/` 被占 → `ERR_PNPM_EPERM`」的路径。
+**锁文件缺条目时，这是最安全的补齐方式**（实测：补完后桌宠仍 70/70、51/51、4/4 分毫未动）。
+
+**🔴 绝对不要做的**：包已落盘但清单没写时，对**已加载的桌宠**跑普通 `pnpm install`
+—— 那正是把它打成残缺态的操作。桌宠坏了就走上方的「已验证复原流程」（需先重启 DSH）。
+
 ## ⚠️ 关于 `plugin_manager` 报的 37 条 peer-gap 警告
 
 **它们全是误报，忽略即可**（该诊断插件已卸载，此处仅存档结论）。
@@ -238,4 +301,4 @@ $pet="$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-whale-girl-pet"
 | `~/.dsh/skin-center-active.json` | 皮肤选择 | ✅ 260 字节 |
 | `~/.dsh/.credentials.yaml` | 密钥 19 条 | ❌ 见 `secrets.md` |
 | `~/.dsh/sessions/` | 会话记录 11 MB | 可选 |
-| `C:\Users\<user>\dsh-plugin-packages\*.tgz` | free-model 包 | ✅ 但**不在 `~/.dsh` 内**，易漏 |
+| `C:\Users\<user>\dsh-plugin-packages\*.tgz` | free-model 的旧机私存副本 | ⚠️ 不在 `~/.dsh` 内、本仓库也不含；**新机不必带它，改用 npm 版** |

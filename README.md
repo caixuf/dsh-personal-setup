@@ -51,6 +51,9 @@ bash scripts/audit.sh
   **绝不要整份替换**新机的 `.bashrc`（新机可能有自己的内容）
 - **路径要适配**：模板里的 `/home/caixuf/` 需替换为新机实际 `$HOME`
 - **密钥要手填**：见 `intent/secrets.md`，AI **不应**尝试自动获取或生成密钥
+- **别被 `plugin_manager` 的「假失败」骗**：报 `failed` 或超时时，包往往**已完整落盘**、
+  只差清单登记。判定与修复见 `intent/dsh.md` 的「两种假失败」
+- **free-model 走 npm，不要照抄 `file:` tgz 路径**（新机没有那个文件，照抄会让 install 失败）
 
 ### 第 4 步：验证
 
@@ -71,9 +74,9 @@ bash scripts/audit.sh
 | Windows 用户名 | `20247` | 出现在 DSH 的 `file:` 依赖、`.wslconfig` 路径中 |
 | WSL 用户 | `caixuf` | 出现在 dotfile 路径、`.npmrc` 的 prefix |
 | 宿主名 | `caixuf2` | `.gitconfig` 的 credential 作用域 |
-| 代理端口 | `7897` | 见 `intent/wsl.md`，若新机代理软件端口不同需改 `~/.proxy.sh` |
-| WSL 网络模式 | `mirrored` | `.wslconfig` 关键项，换别的模式代理会失效 |
-| DSH tgz | `C:/Users/20247/dsh-plugin-packages/dsh-our-free-model-2.0.0.tgz` | **绝对路径，必须改** |
+| 代理端口 | `7897`（mirrored）/ `7898`（NAT portproxy） | 见 `intent/wsl.md`。`~/.proxy.sh` 会自动探测候选端口，端口不同改 `_wsl_candidates` |
+| WSL 网络模式 | `mirrored`，或 NAT + 宿主 portproxy | **两种都能用**。判据是代理**实测能出网**，不是配置里有没有 mirrored |
+| free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@2.0.0`，新机优先用 npm 版**，无需 tgz |
 
 ## 不在本仓库范围内
 
@@ -93,7 +96,7 @@ bash scripts/audit.sh
 |---|---|---|
 | **ccp** | https://github.com/caixuf/claude-code-providers | Claude Code Provider Switcher。一键 `bash install.sh`。**必须克隆到 `~/code/claude-code-providers`**（`ccp sync` 按此路径查找） |
 | DSH 本体 | https://github.com/deepseek-ai/deepseek-harness | 官方 |
-| `dsh-our-free-model` | 见 `intent/dsh.md` 的 `file:` 依赖 | ⚠️ 打包为 tgz，**不在 `~/.dsh` 内**，迁移易漏 |
+| `dsh-our-free-model` | **npm：`dsh-our-free-model`**（另有旧机 `file:` tgz 私存副本） | ✅ 作者**已正式发布到 npm**（`2.0.0`，peer `^0.2.0-rc.1` 匹配 `0.2.0-rc.2`），直接装即可；旧机那条 `file:` 依赖**不必**带到新机 |
 
 **原则**：仓库**只存"如何获取"与"配置意图"**，不存第三方源码。
 这样上游更新时，新机 `git pull` 即可，不必从本仓库同步过期副本。
