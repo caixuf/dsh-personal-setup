@@ -4,8 +4,8 @@
 - id: agent-default-model
   name: "@deepseek-ai/dsh-agent-default-model"
   config:
-    provider: workbuddy
-    model: deepseek-v4.1-flash-sg
+    provider: buddy
+    model: deepseek-v4.1-flash
     reasoningEffort: high
 - id: ui-settings-account
   name: "@deepseek-ai/dsh-client-ui-settings-account"
@@ -82,5 +82,5 @@
   config:
     size: 260
     position: bottom-right
-    posY: 373
-    hidden: false
+    posY: 728
+    hidden: true

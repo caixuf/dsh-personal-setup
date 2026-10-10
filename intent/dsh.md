@@ -2,7 +2,7 @@
 
 ## 这是什么
 
-DSH 桌面端的插件组合与外观配置。共 **10 个 bundle**，全部经验证 `fiberPhase: active`。
+DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经验证 `fiberPhase: active`。
 
 ## 约束（AI 必读）
 
@@ -27,6 +27,35 @@ DSH 桌面端的插件组合与外观配置。共 **10 个 bundle**，全部经�
 | `@linxin666/dsh-client-ui-skin-center` | 皮肤中心 | 提供 `blue-fantasy` 鲸鱼娘皮肤 |
 | `dsh-terminal-panel` | 主栏全尺寸终端 | 最多 12 标签，刷新回放 256KB |
 | `@anionex/dsh-eye-care` | 暖色护眼主题 | 明暗双套，不劫持 Appearance |
+| `@weibaohui/dsh-sync` | 多机同步/备份 | Git + WebDAV + 本地文件夹三协议 |
+| `dsh-mnemon` | 长期记忆 | 附带 11 个子行（4 source + 5 strategy） |
+
+### ⚠️ 包装错名陷阱（曾踩过）
+
+**`dsh-sync` ≠ `@weibaohui/dsh-sync`**，是两个完全不同的包：
+
+| 包 | peer 情况 | 结果 |
+|---|---|---|
+| `dsh-sync`（无 scope） | 14 个 peer 全锁 `0.1.0-rc.6` | ❌ 被兼容性门禁拒绝 |
+| **`@weibaohui/dsh-sync`** | **无 peer** | ✅ 可装 |
+
+后者才是本仓库使用的包。同类陷阱：生态里有多个同名/近名包（`dsh-doctor` 就有 5+ 个
+不同作者版本，下载量悬殊）。
+
+### ❌ 装不上的包（peer 版本窗口过窄）
+
+| 包 | 不兼容原因 |
+|---|---|
+| `dsh-kb-rag` 1.6.7 | peer `@deepseek-ai/dsh-tools: ^0.1.0-rc.6` —— 语义化版本下 `^0.1.x` **不含 `0.2.x`** |
+
+**用户决定暂不装**。若日后需要本地知识库，兼容替代品：
+
+| 替代 | peer | 能力 | 差距 |
+|---|---|---|---|
+| `dsh-knowledge-base` | 全 `*` | 导入 md/txt/json/**docx/pdf** + FTS5 + 管理 UI | 无向量检索 |
+| `dsh-context-milvus` | `^0.2.0-rc.1`（**精确匹配**） | Milvus 语义代码搜索 | 面向代码而非文档 |
+
+⚠️ 两者都**没有** `dsh-kb-rag` 的「混合检索 + 交叉编码器重排 + 页码级引用」，属降级替代。
 
 ## 外观取向（用户偏好）
 
@@ -88,18 +117,39 @@ $pet="$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-whale-girl-pet"
 **`plugin_manager` 的 install/remove 一旦报 `ERR_PNPM_EPERM`，其失败回滚不保证包内容完整** ——
 它会清空 `assets/` 却保留 `lib/`，或两者都清空，而 `package.json` 看起来完全正常。
 
-**已发生两次**：
+**已发生三次**：
 
-| | 官方包 | 第一次损坏后 | 第二次损坏后 |
-|---|---|---|---|
-| 文件总数 | 70 | 3 | 16 |
-| 动画 | 51 | 3 | 1 |
+| | 官方包 | 第 1 次 | 第 2 次 | 第 3 次 |
+|---|---|---|---|---|
+| 文件总数 | 70 | 3 | 16 | **47** |
+| 动画 | 51 | 3 | 1 | **32** |
+| 预览图 | 4 | 0 | 0 | **0** |
+| `lib/` 代码 | 有 | **丢失** | 保住 | 保住 |
 
 **根因**：`dsh-whale-girl-pet` 的部分 webm 处于不可读写状态，pnpm 无法重命名整个目录。
 
-**恢复方法**：从完整官方包逐文件补齐，被锁文件视为已存在而跳过。
+**恢复方法**（已验证三次有效）：从完整官方包逐文件补齐，被锁文件视为已存在而跳过。
+需一份**完整官方包**作为恢复源，例如 `npm pack dsh-whale-girl-pet@0.3.9` 解包后备用。
 
-**预防**：加装插件前**先卸载桌宠**，装完再装回。
+### 🔴 关于「先卸桌宠」这个预防措施（实测效果有限）
+
+**教训更新**：早期结论是「加装插件前先卸桌宠」，但**第 3 次事故证明这不彻底** ——
+问题出在**装回桌宠时**同样会 EPERM（`importPackage` 重命名失败），照旧破坏包。
+
+**更可靠的做法**：
+
+1. 每次 `plugin_manager` 操作后**立刻体检**（期望 70 / 51 / 4）
+2. 保留一份完整官方包离线副本作为恢复源
+3. 若反复触发，考虑**彻底解决那 3 个被锁的 webm**：重启 DSH 释放句柄后
+   `Remove-Item` 掉它们，再重装桌宠（届时 pnpm 可正常重命名目录）
+
+**体检命令**：
+```powershell
+$pet="$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-whale-girl-pet"
+"文件: $((Get-ChildItem $pet -Recurse -File -Force -EA SilentlyContinue).Count)/70"
+"动画: $((Get-ChildItem "$pet\assets\thumb" -File -Force -EA SilentlyContinue).Count)/51"
+"预览: $((Get-ChildItem "$pet\assets\preview" -File -Force -EA SilentlyContinue).Count)/4"
+```
 
 ## ⚠️ 关于 `plugin_manager` 报的 37 条 peer-gap 警告
 

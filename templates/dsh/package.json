@@ -4,6 +4,8 @@
   "dependencies": {
     "@anionex/dsh-eye-care": "^0.1.2",
     "@linxin666/dsh-client-ui-skin-center": "^0.4.5",
+    "@weibaohui/dsh-sync": "^0.4.8",
+    "dsh-mnemon": "^0.5.25",
     "dsh-our-free-model": "file:C:/Users/20247/dsh-plugin-packages/dsh-our-free-model-2.0.0.tgz",
     "dsh-terminal-panel": "^1.0.1",
     "dsh-whale-girl-pet": "^0.3.9",
@@ -23,7 +25,9 @@
         "dsh-whale-girl-pet",
         "@linxin666/dsh-client-ui-skin-center",
         "dsh-terminal-panel",
-        "@anionex/dsh-eye-care"
+        "@anionex/dsh-eye-care",
+        "@weibaohui/dsh-sync",
+        "dsh-mnemon"
       ]
     }
   }
