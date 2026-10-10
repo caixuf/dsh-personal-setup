@@ -126,30 +126,75 @@ $pet="$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-whale-girl-pet"
 | 预览图 | 4 | 0 | 0 | **0** |
 | `lib/` 代码 | 有 | **丢失** | 保住 | 保住 |
 
-**根因**：`dsh-whale-girl-pet` 的部分 webm 处于不可读写状态，pnpm 无法重命名整个目录。
+**根因（2026-10-10 精确定位，此前描述不准确）**：
 
-**恢复方法**（已验证三次有效）：从完整官方包逐文件补齐，被锁文件视为已存在而跳过。
-需一份**完整官方包**作为恢复源，例如 `npm pack dsh-whale-girl-pet@0.3.9` 解包后备用。
+不是「部分 webm 不可读写」。逐层探测的实际结果是：
 
-### 🔴 关于「先卸桌宠」这个预防措施（实测效果有限）
+| 层级 | 锁状态 |
+|---|---|
+| `lib/` | **FREE**（代码模块，import 后释放） |
+| `package.json` | **FREE** |
+| **`assets/`** | **LOCKED** ← 唯一被锁的 |
+| `assets/` 内的文件 | 全部 FREE（可读、可写、可删） |
 
-**教训更新**：早期结论是「加装插件前先卸桌宠」，但**第 3 次事故证明这不彻底** ——
-问题出在**装回桌宠时**同样会 EPERM（`importPackage` 重命名失败），照旧破坏包。
+**`assets/` 可读可写可删，唯独不能 `rename`** —— 这是**宿主持有目录句柄**
+（在做静态资源服务 / watch），不是文件锁，也不是权限问题。
 
-**更可靠的做法**：
+**EPERM 的确切机制**：pnpm 安装时要把包目录整体 `rename`（`importPackage`），
+而 `assets/` 被占用 → rename 失败 → `ERR_PNPM_EPERM` → 触发回滚。
+回滚本身也不完整，于是包被留成残缺态。
 
-1. 每次 `plugin_manager` 操作后**立刻体检**（期望 70 / 51 / 4）
-2. 保留一份完整官方包离线副本作为恢复源
-3. 若反复触发，考虑**彻底解决那 3 个被锁的 webm**：重启 DSH 释放句柄后
-   `Remove-Item` 掉它们，再重装桌宠（届时 pnpm 可正常重命名目录）
+### 🔴 为什么在会话内无法自愈
 
-**体检命令**：
+句柄属于**运行中的 DSH 进程**，而操作者（AI）就跑在那个进程里。表现为：
+
+- ✅ 能删文件、补文件、读文件
+- ❌ **永远无法让目录 rename 成功**
+
+所以无论怎么清残留、补文件，下一次 pnpm 操作照样 EPERM。
+**只有重启 DSH（释放进程内句柄）才能打破这个循环。**
+
+### ✅ 已验证的有效复原流程（2026-10-10 实测成功）
+
+1. **重启 DSH**（关键前置，释放 `assets/` 句柄）
+2. 确认锁已释放：
+   ```powershell
+   $pet="$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-whale-girl-pet"
+   Rename-Item $pet "$pet`_probe"   # 成功 = 锁已释放
+   Rename-Item "$pet`_probe" $pet
+   ```
+3. 走真实流程重装（**不要手工补文件**）：
+   `plugin_manager remove_bundle` → `install_bundle`
+4. 期望结果：`application: applied`（而非 `failed`），
+   且 pnpm 输出 `added 1, done` 而非 `ERR_PNPM_EPERM`
+
+**实测结果**（重启后执行）：文件 `70/70`、动画 `51/51`、预览 `4/4`、
+逐文件 diff 官方包 **缺失 0、多余 0**、lockfile 含 `whale`。
+
+### ⚠️ 复原后的残留风险（知悉即可）
+
+重装成功后，插件重新加载，`assets/` **会再次被锁** —— 这是必然且正常的
+（只要桌宠在跑，资源目录就被持有）。
+
+**但性质与之前不同**：
+
+- ❌ 之前：残缺包 + 失败回滚 → 每次操作都碎得更厉害
+- ✅ 现在：pnpm 的完整副本已干净落盘 → 即使某次操作回滚，也只是**回到这个完整状态**
+
+**恢复源建议**：保留一份完整官方包离线副本，例如
+```bash
+npm pack dsh-whale-girl-pet@0.3.9    # 解包后作为逐文件恢复源
+```
+
+**体检命令**（每次 `plugin_manager` 操作后执行）：
 ```powershell
 $pet="$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-whale-girl-pet"
 "文件: $((Get-ChildItem $pet -Recurse -File -Force -EA SilentlyContinue).Count)/70"
 "动画: $((Get-ChildItem "$pet\assets\thumb" -File -Force -EA SilentlyContinue).Count)/51"
 "预览: $((Get-ChildItem "$pet\assets\preview" -File -Force -EA SilentlyContinue).Count)/4"
 ```
+
+**装插件的最佳时机**：刚启动 DSH、页面尚未加载桌宠时（此时 `assets/` 未被持有）。
 
 ## ⚠️ 关于 `plugin_manager` 报的 37 条 peer-gap 警告
 
