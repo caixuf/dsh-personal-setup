@@ -74,7 +74,7 @@ bash scripts/audit.sh
 | Windows 用户名 | `20247` | 出现在 DSH 的 `file:` 依赖、`.wslconfig` 路径中 |
 | WSL 用户 | `caixuf` | 出现在 dotfile 路径、`.npmrc` 的 prefix |
 | 宿主名 | `caixuf2` | `.gitconfig` 的 credential 作用域 |
-| 代理端口 | `7897`（mirrored）/ `7898`（NAT portproxy） | 见 `intent/wsl.md`。`~/.proxy.sh` 会自动探测候选端口，端口不同改 `_wsl_candidates` |
+| 代理端口 | **`7897`** ＝ 真实代理（singcore，只绑 `127.0.0.1`）；`7898`/`7892` ＝ netsh portproxy 转发到 7897 的垫片 | ⚠️ **不是两个并列的代理**。改候选端口见 `intent/wsl.md`（模板用 `CANDIDATE_PORTS`，旧机 v6 用 `_wsl_candidates`） |
 | WSL 网络模式 | `mirrored`，或 NAT + 宿主 portproxy | **两种都能用**。判据是代理**实测能出网**，不是配置里有没有 mirrored |
 | free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@2.0.0`，新机优先用 npm 版**，无需 tgz |
 

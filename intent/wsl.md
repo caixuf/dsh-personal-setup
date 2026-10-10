@@ -17,10 +17,10 @@
 **真正的要求只有一条**：`~/.proxy.sh` 的候选端口里，至少有一个**真能出网**。
 用哪种 WSL 网络模式都可以：
 
-| 拓扑 | `.wslconfig` | 代理该怎么监听 | WSL 侧访问地址 |
+| 拓扑 | `.wslconfig` | 代理可以怎么绑 | WSL 侧访问地址 |
 |---|---|---|---|
-| **mirrored** | `networkingMode=mirrored` | `127.0.0.1:7897` 即可 | `127.0.0.1:7897`（直通宿主） |
-| **NAT + portproxy** | 不设 `networkingMode`（默认 NAT） | 宿主全接口 / portproxy | 默认网关 IP，如 `172.18.80.1:7898` |
+| **mirrored** | `networkingMode=mirrored` | `127.0.0.1:7897`（默认，无需垫片） | `127.0.0.1:7897`（直通宿主） |
+| **NAT + portproxy** | 不设 `networkingMode`（默认 NAT） | 仍只绑 `127.0.0.1:7897`，另加 portproxy 垫片 | 默认网关 IP，如 `172.18.80.1:7898` |
 
 NAT 模式下 `127.0.0.1` 是 WSL 自己的，所以**必须**经网关 IP 访问宿主端口 ——
 **这不是故障**，`~/.proxy.sh` v6 会把两种地址都试一遍。
@@ -51,12 +51,36 @@ sparseVhd=true
 
 ### 端口约定（`~/.proxy.sh` 顶部注释，不可互相改）
 
-| 端口 | 用途 |
-|---|---|
-| **7897** | 星连 SingLink 内核 singcore 的 mixed 端口（**mirrored 拓扑**下的首选） |
-| **7898** | 星连 portproxy 口（**NAT 拓扑**下的首选，v4 起 7892→7898） |
-| 7899 | Clash Verge 备胎（已从 7892 挪开，避免和星连打架） |
-| 7892 | 历史遗留位（超实惠 sing-box 时代）—— 仅兜底 |
+**真身只有一个：`7897`。** 其余是 `netsh interface portproxy` 转发到它的**垫片**，
+目的是让 **NAT 拓扑**的 WSL 能访问一个只绑 `127.0.0.1` 的代理。
+
+| 端口 | 谁在听 | 用途 |
+|---|---|---|
+| **7897** | `singcore`（星连 SingLink），**仅 `127.0.0.1`** | **真正的代理** |
+| 7898 | `svchost`＝portproxy `0.0.0.0:7898 → 127.0.0.1:7897` | NAT 下 WSL 的入口 |
+| 7892 | `svchost`＝portproxy `0.0.0.0:7892 → 127.0.0.1:7897` | 同上（历史遗留名） |
+| 7899 | `svchost`＝portproxy `0.0.0.0:7899 → 127.0.0.1:7899` | ⚠️ **自环、连不通**（见下） |
+
+所以「WSL 里该用哪个口」取决于拓扑，**但不是两个并列的代理**：
+
+- **mirrored**：`127.0.0.1` 直通宿主 → 直接用 **`7897`**
+- **NAT**：WSL 的 `127.0.0.1` 是自己 → 必须走网关 IP + portproxy 垫片
+  （`172.18.80.1:7898` 或 `:7892`，两者最终都到 7897）
+
+**⚠️ 7899 那条规则是坏的**：listen `0.0.0.0:7899` → connect `127.0.0.1:7899`，
+目标落在自己的监听范围内，**永远连不通**。`~/.proxy.sh` 的 `_wsl_note` 把它标为
+"Clash"，但实测该口只有 portproxy 自己在听（没有 Clash）。要用 7899 得先把
+connect 目标改成真实后端。
+
+**核验命令**（Windows 侧，怀疑端口归属时先跑这个）：
+
+```powershell
+netsh interface portproxy show all
+Get-NetTCPConnection -State Listen |
+  Where-Object LocalPort -in 7897,7898,7899,7892 |
+  ForEach-Object { $p = Get-Process -Id $_.OwningProcess -EA SilentlyContinue
+                   "{0}:{1}  {2}" -f $_.LocalAddress, $_.LocalPort, $p.ProcessName }
+```
 
 **若新机代理软件端口不同**，改候选端口列表 —— ⚠️ **两代文件变量名不同，别 grep 错**：
 
