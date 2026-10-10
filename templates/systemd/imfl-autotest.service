@@ -1,0 +1,23 @@
+[Unit]
+Description=IMFL Auto Test Cloud Platform Daemon
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=caixuf
+WorkingDirectory=/home/caixuf/code/imfl_auto_test
+EnvironmentFile=-/home/caixuf/code/imfl_auto_test/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=AUTOTEST_PORT=9900
+Environment=AUTOTEST_LOG_FORMAT=json
+
+ExecStart=/usr/bin/python3 autotest_server/server.py --port 9900
+Restart=always
+RestartSec=5s
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Mount Samba Share BH
+Requires=network-online.target
+After=network-online.target remote-fs.target
+
+[Mount]
+What=//172.100.100.2/bh
+Where=/mnt/bh
+Type=cifs
+Options=guest,vers=3.0,nofail,_netdev,x-systemd.device-timeout=30,uid=1000,gid=1000,file_mode=0755,dir_mode=0755
+TimeoutSec=30
+
+[Install]
+WantedBy=multi-user.target

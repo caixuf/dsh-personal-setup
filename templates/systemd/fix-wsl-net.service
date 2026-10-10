@@ -1,0 +1,12 @@
+[Unit]
+Description=Fix WSL default route and intranet hosts at boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/fix-wsl-net.sh
+
+[Install]
+WantedBy=multi-user.target

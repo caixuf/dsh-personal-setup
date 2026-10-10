@@ -1,0 +1,26 @@
+# 密钥与凭据 —— 绝不入库
+*.key
+*.pem
+*.token
+secrets.env
+proxy.env
+.git-credentials
+.credentials.yaml
+
+# 本仓库生成/临时产物
+audit.txt
+*.local
+*.bak
+*.bak.*
+
+# 若有人误把真实 profile 拷进来（应只存模板）
+providers/*.json
+!providers/*.json.example
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+.vscode/
+.idea/
