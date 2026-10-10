@@ -4,8 +4,8 @@
 # 安装：追加到 ~/.bashrc（不要覆盖整份）
 #
 # ⚠️ 本块必须放在交互守卫【之后】，因为它依赖 ~/.proxy.sh 里的 proxy_port_alive 函数。
-# ⚠️ ~/.proxy.sh 本身不在此模板中（它较长且属独立文件），需从旧机复制
-#    —— 它只含端口与白名单，**不含密钥**，可安全复制。
+# ✅ ~/.proxy.sh 的内容就在 templates/proxy.sh —— 只含端口与白名单，**不含密钥**。
+#    安装：cp templates/proxy.sh ~/.proxy.sh   （**不需要**从旧机复制）
 
 # --- 代理快捷开关 (proxy_on / proxy_off / proxy_test) ---
 # 由 ~/.proxy.sh 提供。自动开启，但仅在代理端口活着时才开 ——
