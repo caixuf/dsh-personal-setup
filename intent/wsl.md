@@ -12,25 +12,38 @@
 | 内存/CPU | `.wslconfig` 限 16GB / 12 核，swap 8GB |
 | GPU | NVIDIA RTX 5060 Laptop，`/dev/dxg` 直通可用 |
 
-## ⚠️ 网络拓扑：mirrored 或 NAT+portproxy **都可行**（别只看配置就下结论）
+## ⚠️ 网络拓扑：本机用 **NAT + portproxy**，因为 mirrored 在这台机器上起不来
+
+**先记住这条**：`singcore`（星连）只监听 `127.0.0.1:7897`。要让 WSL 用上它，
+有两种办法 —— 但**本机只能用第二种**：
+
+| 机器 | 拓扑 | 怎么访问 7897 | 备注 |
+|---|---|---|---|
+| 旧机（`caixuf2` 笔记本） | **mirrored** | 直接用 `127.0.0.1:7897`（直通宿主） | `.wslconfig` 里 `networkingMode=mirrored` |
+| **本机（`caixuf` 台式）** | **NAT + portproxy** | 经网关 IP，如 `172.18.80.1:7898` | ⚠️ 本机 **mirrored 实测总是失败** |
+
+### 🔴 绝对不要给本机加 `networkingMode=mirrored`
+
+**本机开镜像模式总是起不来**（用户实测，2026-10-10 再次确认）。
+那些 `netsh interface portproxy` 垫片**正是为此存在** ——
+它**不是**「退而求其次的 workaround」，而是**本机的正式设计**。
+
+曾有一轮因为「看到不是 mirrored 就想换成镜像模式、以为 7897 直连更好」差点改
+`.wslconfig` —— 那会把本机网络弄坏。**看到 NAT 不要动它。**
 
 **真正的要求只有一条**：`~/.proxy.sh` 的候选端口里，至少有一个**真能出网**。
-用哪种 WSL 网络模式都可以：
-
-| 拓扑 | `.wslconfig` | 代理可以怎么绑 | WSL 侧访问地址 |
-|---|---|---|---|
-| **mirrored** | `networkingMode=mirrored` | `127.0.0.1:7897`（默认，无需垫片） | `127.0.0.1:7897`（直通宿主） |
-| **NAT + portproxy** | 不设 `networkingMode`（默认 NAT） | 仍只绑 `127.0.0.1:7897`，另加 portproxy 垫片 | 默认网关 IP，如 `172.18.80.1:7898` |
 
 NAT 模式下 `127.0.0.1` 是 WSL 自己的，所以**必须**经网关 IP 访问宿主端口 ——
-**这不是故障**，`~/.proxy.sh` v6 会把两种地址都试一遍。
+**这不是故障**。`~/.proxy.sh` 会把「`127.0.0.1` + 默认网关」两种宿主地址都试一遍，
+所以**同一份模板在两种拓扑下都能工作**。
 
-**🔴 别把「不是 mirrored」直接判为故障**（`apply.sh` 早期版本就是这么误报的）。
-以 `proxy_test` 或 `apply.sh --check` 的**实测出网**为准。
-2026-10-10 实测一台 NAT+portproxy 的机器：`github.com → 200`、`registry.npmjs.org → 200`，
-完全正常，**不需要**改 `.wslconfig`、更不需要 `wsl --shutdown`。
+**🔴 别把「不是 mirrored」判为故障**（`apply.sh` 早期版本就是这么误报的）。
+以 `proxy_test` / `apply.sh --check` 的**实测出网**为准。
+2026-10-10 实测本机：`172.18.80.1:7898` → `github.com` 得 `200`，完全正常，
+**不需要**改 `.wslconfig`、更不需要 `wsl --shutdown`。
 
-旧机 `.wslconfig` 参考值（改用 NAT+portproxy 时删掉 `networkingMode` 那行即可）：
+旧机（`caixuf2` 笔记本）的 `.wslconfig` 参考值 ——
+⚠️ **本机不要照抄**：本机要的是**纯 NAT**（`networkingMode` 那行必须不存在）：
 
 ```ini
 [wsl2]

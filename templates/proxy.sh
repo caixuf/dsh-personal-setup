@@ -14,7 +14,10 @@
 #   mirrored → 127.0.0.1 直通 Windows，直接用 7897
 #   NAT      → 127.0.0.1 是 WSL 自己的，必须走默认网关 IP（如 172.18.80.1），
 #              再经上面的 portproxy 垫片回到 7897
-# 所以「不是 mirrored」不代表代理不可用 —— 别据此去改 .wslconfig。
+#
+# 🔴 「不是 mirrored」**不代表**代理不可用，别据此去改 .wslconfig：
+#    有些机器（含本机 caixuf 台式）**开 mirrored 总是失败**，
+#    那些 portproxy 垫片就是为此存在的正式设计，不是临时 workaround。
 #
 # 怀疑端口归属时先看规则（Windows 侧）：netsh interface portproxy show all
 #
