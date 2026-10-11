@@ -2,7 +2,8 @@
 
 ## 这是什么
 
-DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经验证 `fiberPhase: active`。
+DSH 桌面端的插件组合与外观配置。共 **13 个 bundle**，全部经验证 `fiberPhase: active`。
+（第 13 个 `dsh-mobile` 已装但**用户决定搁置**，详见「dsh-mobile」一节 —— 新机可不装。）
 
 ## 约束（AI 必读）
 
@@ -29,6 +30,7 @@ DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经�
 | `@anionex/dsh-eye-care` | 暖色护眼主题 | 明暗双套，不劫持 Appearance |
 | `@weibaohui/dsh-sync` | 多机同步/备份 | Git + WebDAV + 本地文件夹三协议 |
 | `dsh-mnemon` | 长期记忆 | 附带 11 个子行（4 source + 5 strategy） |
+| `dsh-mobile` | 手机远程操控 DSH | ⚠️ **已装但搁置**，见下方专节 |
 
 ### ⚠️ 包装错名陷阱（曾踩过）
 
@@ -57,12 +59,80 @@ DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经�
 
 ⚠️ 两者都**没有** `dsh-kb-rag` 的「混合检索 + 交叉编码器重排 + 页码级引用」，属降级替代。
 
+## ⚠️ `dsh-mobile`（手机远程操控）—— 已装但搁置
+
+**版本**：插件 `0.6.3`（npm `dsh-mobile`），Android App `0.6.2`（要求 Android 10+）。
+**状态（2026-10-12）**：装好了，但**用户决定放弃，等官方改进**。局域网初始化已回滚，
+`control.json` 为 `{"version":1,"enabled":false}`，端口 3443 **未监听**。
+
+### 为什么搁置
+
+不是装不上，是**流程太别扭**，五道坎要人工跨（详见下「踩坑清单」）。
+用户原话：「还是不行啊，好麻烦，算了吧，等官方搞」。
+
+### 🔴 踩坑清单（重装前必读，可省一轮折腾）
+
+| # | 坑 | 事实 |
+|---|---|---|
+| 1 | **Client 一半要刷新才加载** | 装完立刻点「移动访问」没用。必须**重启 DSH**，诊断面板才会出现 |
+| 2 | **CLI 是坏的** | `dsh-mobile setup` 报 `ERR_MODULE_NOT_FOUND: @deepseek-ai/cordis`。该包在 `peerDependenciesMeta` 标了 `optional` 且**实际未装** → README 让你跑 CLI，但**本机跑不通**，只能走 GUI 或管理 API |
+| 3 | **出厂只绑回环** | `cordis.patch.yml` 默认 `initiallyEnabled: false` + `allowedCidrs: [127.0.0.0/8]` → 手机**根本连不进来**，必须手动放开 |
+| 4 | **防火墙诊断是误报** | 本机 Domain/Private/Public **三档全关**（见 `conventions.md`），「未允许读取防火墙状态」**不影响连接** |
+| 5 | **管理 API 有会话门槛** | `GET /api/mobile-access/diagnostics` 免凭据；`POST lan/control` 要浏览器 cookie，脚本直连拿 **401** |
+
+### ✅ 唯一走通的路：直接调管理 API
+
+GUI 点不动 / CLI 跑不了时，用这个（已实测成功）：
+
+```powershell
+# 1. 看候选网卡（免凭据）
+GET  http://127.0.0.1:19387/api/mobile-access/lan/setup
+#    → {"configured":false,"networks":[{"name":"以太网","address":"192.168.31.79","recommended":true}, ...]}
+
+# 2. 提交初始化（免凭据；configureFirewall:false 避免它去动防火墙）
+POST http://127.0.0.1:19387/api/mobile-access/lan/setup
+     {"confirm":true,"address":"192.168.31.79","configureFirewall":false}
+#    → {"configured":true,"restartRequired":true,"pendingOrigin":"https://192.168.31.79:3443"}
+```
+
+请求**必须带** `Origin: http://127.0.0.1:19387` + `Sec-Fetch-Site: same-origin`，否则 403。
+
+产物落在 `~/.dsh/mobile-access/`：`setup.json`（网卡 + 上游 `http://127.0.0.1:19387`）、
+`control.json`、`tls/{ca,server-cert,server-key}.pem`、`tls/dsh-mobile-ca.cer`。
+
+### 🔴 回滚（不玩了就这样收）
+
+那句 `restartRequired: true` 意味着**重启后 3443 会在 `192.168.31.79` 上暴露**。
+不玩了必须收回，两条都做：
+
+1. `~/.dsh/mobile-access/control.json` → `{"version":1,"enabled":false}`
+2. `cordis.patch.yml` 里**删掉**手工加的 `mobile-access` 段（`initiallyEnabled: true` / `listenHost: 0.0.0.0`）
+
+> ⚠️ `listenHost: 0.0.0.0` 与插件自己生成的 `setup.json` 是**两套配置来源**，
+> 冲突时行为未验证 —— 别两边都设。插件的 `setup.json` 才是权威配置。
+
+### 附：手机装 APK（USB 已通）
+
+```powershell
+$adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\adb.exe"
+& $adb devices -l                                    # 先确认是 device 不是 unauthorized
+& $adb install -r "<apk 路径>"                        # → Success
+& $adb shell pm list packages | Select-String dsh     # → io.github.sayach.dshmobile
+```
+
+**手机上要先开「USB 调试」**。不开时设备仍会以 **MTP** 出现（`VID_22D9&PID_2764`），
+但 `adb devices` 是空的 —— 别以为没连上。**realme/OPPO 的 VID 是 `22D9`**：
+`PID_2764` = 纯 MTP，`PID_2765` = MTP + ADB。
+
 ## 外观取向（用户偏好）
 
 来自多轮交互确认，**不要**改成别的：
 
 1. **鲸鱼娘外观由 skin-center 的 `blue-fantasy` 皮肤提供**，不用 `dsh-theme-whalegirl`
 2. `ui-theme.preference` 应为 **`dark`**
+   ⚠️ 曾误改成 `light`（记错了「GUI 里选的是 light」）—— 那条其实正是下面
+   「配置写入方冲突」记载的**皮肤中心回写**现象。已按本文件改回 `dark`。
+   **明暗以本文件为准，去「设置 → 皮肤中心」改。**
 3. 皮肤中心的**背景遮挡 `backgroundOpacity`** 由用户自行调节（0 = 壁纸全裸，用户嫌遮挡视线）。
    **不要写死具体数值** —— 实测用户会在 15~72 之间自行调整，见 `~/.dsh/skin-center-active.json`。
 4. eye-care 当前 `mode: off`，但保留（用户可自行启用暖色）
@@ -151,7 +221,8 @@ minimumReleaseAgeExclude:
 dsh plugin --profile desktop list
 ```
 
-期望：10 个 bundle 全部 `fiberPhase: active`、零加载失败。
+期望：13 个 bundle 全部 `fiberPhase: active`、零加载失败。
+（不装 `dsh-mobile` 时是 12 个。）
 
 ### 桌宠完整性自检（**每次 plugin_manager 操作后必做**）
 
