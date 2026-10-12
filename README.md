@@ -27,6 +27,8 @@ templates/              ← 【是什么】可直接复制、不含密钥
   litellm/config.yaml   本地模型网关配置（已剔除密钥）
   dsh/                   DSH profile 的配置三件套
   skills/               自建 skill（当前：evidence-boundary，见 intent/dsh.md）
+  forks/                本机 fork 的第三方源码（仅源码，不含构建产物）
+    dsh-wsl-workspace/  WSL 用户级 skill 补丁（基线 0.7.5）；说明见其 README.fork.md
 scripts/
   audit.sh              盘点**当前机**实际状态，供 AI 与新机对比
   apply.sh              幂等落地（默认 --check 只读）
@@ -87,24 +89,25 @@ bash scripts/audit.sh
 | 代理端口 | **`7897`** ＝ 真实代理（singcore，只绑 `127.0.0.1`）；`7898`/`7892` ＝ netsh portproxy 转发到 7897 的垫片 | ⚠️ **不是两个并列的代理**。改候选端口见 `intent/wsl.md`（模板用 `CANDIDATE_PORTS`，旧机 v6 用 `_wsl_candidates`） |
 | WSL 网络模式 | 旧机 `mirrored`；**本机必须 NAT + 宿主 portproxy** | 🔴 本机 **开 mirrored 总是失败**，**不要**加 `networkingMode=mirrored`（那些 portproxy 垫片就是为此存在的正式设计）。判据只有一条：代理**实测能出网** |
 | free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@^2.1.0`，新机优先用 npm 版**，无需 tgz（本机 2026-10-12 已切） |
-| **WSL fork 运行副本** | `C:\Users\20247\Downloads\minimax_work\dsh-wsl-workspace-fork` | ⚠️ **该目录不受版本控制**（`minimax_work` 不是 git 仓）。DSH 用 `link:` 指向它，删了就装不上 |
+| **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | ⚠️ **该目录不受版本控制**（所在目录不是 git 仓）。DSH 用 `link:` 指向它，删了就装不上 |
 
-### WSL fork 的两处副本（换机必看）
+### WSL fork：改动已存进本仓
+
+改动源码现保存在 **`forks/dsh-wsl-workspace/`**（MIT 许可，保留上游版权声明）。
+只含源码与测试，**不含 `lib/` 构建产物** —— 重建时跑 `npm run build` 生成。
 
 | 位置 | 角色 | 受版本控制 |
 |---|---|---|
-| `~/code/dsh-wsl-workspace`（WSL） | **git 源**，分支 `feat/wsl-user-skills-075`，提交 `f1f30d2` | ✅ |
-| `minimax_work\dsh-wsl-workspace-fork`（Windows） | **运行副本**，DSH 的 `node_modules` 用 junction 指向它 | ❌ |
+| `forks/dsh-wsl-workspace/`（本仓） | **改动源码** + `README.fork.md`（改动说明、哨兵、构建/测试/同步命令） | ✅ |
+| `<Windows 工作目录>\dsh-wsl-workspace-fork`（本机） | **运行副本**，DSH 的 `node_modules` 用 junction 指向它 | ❌ |
+| `~/code/dsh-wsl-workspace`（本机 WSL） | 开发用 git 仓，分支 `feat/wsl-user-skills-075` @ `f1f30d2` | ✅（仅本机） |
 
-新机上要复现，顺序是：克隆 git 源 → 按 `intent/dsh.md` 的「WSL 用户级 skill fork」节
-重新编译（需 node ≥24）→ 同步到 Windows 副本 → 查哨兵
-（`grep -c variantGeneration lib/index.js` 必须为 0）→ `link:` 安装。
+> ✅ **单点风险已解除。** 此前那 176 行改动只存在于本机 WSL 的 `~/code/`，
+> WSL 一重装就没了。现在它们在本仓里，跟着仓库走。
 
-> 🔴 **单点风险：fork 提交 `f1f30d2` 尚未推送任何远端。**
-> 它只存在于 `~/code/dsh-wsl-workspace`（本机 WSL）这一处。
-> WSL 一旦重装或 `~/code` 被清空，**改动就没了** —— 而它们正是
-> 「WSL 会话能看到 61 个用户级 skill」的全部来源。
-> 建议推到自己的 GitHub 私有仓，或至少做一份 `git bundle` 存档。
+新机上复现：从 `forks/dsh-wsl-workspace/` 出发 → `npm install && npm run build`（需 node ≥24）
+→ 查哨兵 `grep -c variantGeneration lib/index.js`（**必须为 0**）
+→ 复制到 Windows 可访问路径 → `link:` 装进 DSH。详见该目录的 `README.fork.md`。
 
 ## 不在本仓库范围内
 
