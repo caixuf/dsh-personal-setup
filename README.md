@@ -87,6 +87,24 @@ bash scripts/audit.sh
 | 代理端口 | **`7897`** ＝ 真实代理（singcore，只绑 `127.0.0.1`）；`7898`/`7892` ＝ netsh portproxy 转发到 7897 的垫片 | ⚠️ **不是两个并列的代理**。改候选端口见 `intent/wsl.md`（模板用 `CANDIDATE_PORTS`，旧机 v6 用 `_wsl_candidates`） |
 | WSL 网络模式 | 旧机 `mirrored`；**本机必须 NAT + 宿主 portproxy** | 🔴 本机 **开 mirrored 总是失败**，**不要**加 `networkingMode=mirrored`（那些 portproxy 垫片就是为此存在的正式设计）。判据只有一条：代理**实测能出网** |
 | free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@^2.1.0`，新机优先用 npm 版**，无需 tgz（本机 2026-10-12 已切） |
+| **WSL fork 运行副本** | `C:\Users\20247\Downloads\minimax_work\dsh-wsl-workspace-fork` | ⚠️ **该目录不受版本控制**（`minimax_work` 不是 git 仓）。DSH 用 `link:` 指向它，删了就装不上 |
+
+### WSL fork 的两处副本（换机必看）
+
+| 位置 | 角色 | 受版本控制 |
+|---|---|---|
+| `~/code/dsh-wsl-workspace`（WSL） | **git 源**，分支 `feat/wsl-user-skills-075`，提交 `f1f30d2` | ✅ |
+| `minimax_work\dsh-wsl-workspace-fork`（Windows） | **运行副本**，DSH 的 `node_modules` 用 junction 指向它 | ❌ |
+
+新机上要复现，顺序是：克隆 git 源 → 按 `intent/dsh.md` 的「WSL 用户级 skill fork」节
+重新编译（需 node ≥24）→ 同步到 Windows 副本 → 查哨兵
+（`grep -c variantGeneration lib/index.js` 必须为 0）→ `link:` 安装。
+
+> 🔴 **单点风险：fork 提交 `f1f30d2` 尚未推送任何远端。**
+> 它只存在于 `~/code/dsh-wsl-workspace`（本机 WSL）这一处。
+> WSL 一旦重装或 `~/code` 被清空，**改动就没了** —— 而它们正是
+> 「WSL 会话能看到 61 个用户级 skill」的全部来源。
+> 建议推到自己的 GitHub 私有仓，或至少做一份 `git bundle` 存档。
 
 ## 不在本仓库范围内
 
@@ -105,6 +123,7 @@ bash scripts/audit.sh
 | 组件 | 仓库 | 说明 |
 |---|---|---|
 | **ccp** | https://github.com/caixuf/claude-code-providers | Claude Code Provider Switcher。一键 `bash install.sh`。**必须克隆到 `~/code/claude-code-providers`**（`ccp sync` 按此路径查找） |
+| **dsh-wsl-workspace** | 上游 https://github.com/dsh-wsl-workspace-maintainers/dsh-wsl-workspace | 本机装的是**本地 fork**（分支 `feat/wsl-user-skills-075` @ `f1f30d2`），⚠️ **该 fork 尚未推送到任何远端，只存在于本机 WSL**。上游 `0.7.7` **重写了 preset 派生机制**，装上会让所有 WSL 会话报 `Unknown agent preset: wsl-standard` |
 | DSH 本体 | https://github.com/deepseek-ai/deepseek-harness | 官方 |
 | `dsh-our-free-model` | **npm：`dsh-our-free-model`**（另有旧机 `file:` tgz 私存副本） | ✅ 作者**已正式发布到 npm**（`^2.1.0`，peer `^0.2.0-rc.1` 匹配 `0.2.0-rc.2`），直接装即可；旧机那条 `file:` 依赖**不必**带到新机 |
 
