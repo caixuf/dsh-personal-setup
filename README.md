@@ -25,10 +25,11 @@ templates/              ← 【是什么】可直接复制、不含密钥
   profile.d/*.sh        .profile 的片段
   systemd/*.service     systemd 单元
   litellm/config.yaml   本地模型网关配置（已剔除密钥）
-  dsh/                   DSH profile 的配置三件套
+  dsh/                  DSH profile 配置（package.json / cordis.patch.yml / pnpm-workspace.yaml）
+  proxy.sh              代理垫片（部署件，见 intent/wsl.md）
   skills/               自建 skill（当前：evidence-boundary，见 intent/dsh.md）
-  forks/                本机 fork 的第三方源码（仅源码，不含构建产物）
-    dsh-wsl-workspace/  WSL 用户级 skill 补丁（基线 0.7.5）；说明见其 README.fork.md
+forks/                  ← 【例外】本机 fork 的第三方源码（仅源码，不含构建产物）
+  dsh-wsl-workspace/    WSL 用户级 skill 补丁（基线 0.7.5）；说明见其 README.fork.md
 scripts/
   audit.sh              盘点**当前机**实际状态，供 AI 与新机对比
   apply.sh              幂等落地（默认 --check 只读）
@@ -83,10 +84,10 @@ bash scripts/audit.sh
 
 | 项 | 旧机值 | 说明 |
 |---|---|---|
-| Windows 用户名 | `20247` | 出现在 DSH 的 `file:` 依赖、`.wslconfig` 路径中 |
+| Windows 用户名 | `20247` | 出现在 DSH 的 `link:` 依赖（`templates/dsh/package.json` 的 `dsh-wsl-workspace`）、`.wslconfig` 路径中 |
 | WSL 用户 | `caixuf` | 出现在 dotfile 路径、`.npmrc` 的 prefix |
-| 宿主名 | `caixuf2` | `.gitconfig` 的 credential 作用域 |
-| 代理端口 | **`7897`** ＝ 真实代理（singcore，只绑 `127.0.0.1`）；`7898`/`7892` ＝ netsh portproxy 转发到 7897 的垫片 | ⚠️ **不是两个并列的代理**。改候选端口见 `intent/wsl.md`（模板用 `CANDIDATE_PORTS`，旧机 v6 用 `_wsl_candidates`） |
+| 宿主名 | `caixuf2` | 出现在 `intent/wsl.md` 的机器标注；`.gitconfig` 里只有 `[credential] helper = store`，**不含宿主名** |
+| 代理端口 | **`7897`** ＝ 真实代理（singcore，只绑 `127.0.0.1`）；`7898`/`7899`/`7892` ＝ netsh portproxy 转发到 7897 的垫片 | ⚠️ **不是并列的多个代理**。`7899` 是 `intent/wsl.md` 指定的**推荐同名转发**口，别漏。改候选端口见 `intent/wsl.md`（模板用 `CANDIDATE_PORTS`） |
 | WSL 网络模式 | 旧机 `mirrored`；**本机必须 NAT + 宿主 portproxy** | 🔴 本机 **开 mirrored 总是失败**，**不要**加 `networkingMode=mirrored`（那些 portproxy 垫片就是为此存在的正式设计）。判据只有一条：代理**实测能出网** |
 | free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@^2.1.0`，新机优先用 npm 版**，无需 tgz（本机 2026-10-12 已切） |
 | **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | ⚠️ **该目录不受版本控制**（所在目录不是 git 仓）。DSH 用 `link:` 指向它，删了就装不上 |
@@ -126,11 +127,16 @@ bash scripts/audit.sh
 | 组件 | 仓库 | 说明 |
 |---|---|---|
 | **ccp** | https://github.com/caixuf/claude-code-providers | Claude Code Provider Switcher。一键 `bash install.sh`。**必须克隆到 `~/code/claude-code-providers`**（`ccp sync` 按此路径查找） |
-| **dsh-wsl-workspace** | 上游 https://github.com/dsh-wsl-workspace-maintainers/dsh-wsl-workspace | 本机装的是**本地 fork**（分支 `feat/wsl-user-skills-075` @ `f1f30d2`），⚠️ **该 fork 尚未推送到任何远端，只存在于本机 WSL**。上游 `0.7.7` **重写了 preset 派生机制**，装上会让所有 WSL 会话报 `Unknown agent preset: wsl-standard` |
+| **dsh-wsl-workspace** | 上游 https://github.com/dsh-wsl-workspace-maintainers/dsh-wsl-workspace | 本机装的是**本地 fork**（分支 `feat/wsl-user-skills-075` @ `f1f30d2`），源码已随本仓 `forks/dsh-wsl-workspace/` 入库（见下「fork 例外」）。⚠️ 上游 `0.7.7` **重写了 preset 派生机制**，装上会让所有 WSL 会话报 `Unknown agent preset: wsl-standard` |
 | DSH 本体 | https://github.com/deepseek-ai/deepseek-harness | 官方 |
 | `dsh-our-free-model` | **npm：`dsh-our-free-model`**（另有旧机 `file:` tgz 私存副本） | ✅ 作者**已正式发布到 npm**（`^2.1.0`，peer `^0.2.0-rc.1` 匹配 `0.2.0-rc.2`），直接装即可；旧机那条 `file:` 依赖**不必**带到新机 |
 
 **原则**：仓库**只存"如何获取"与"配置意图"**，不存第三方源码。
 这样上游更新时，新机 `git pull` 即可，不必从本仓库同步过期副本。
+
+> **例外：`forks/`。** 若某个第三方组件**本机改了源码、且改动无法靠配置表达**，
+> 就把它作为 fork 存进 `forks/<name>/`（仅源码 + 保留上游 LICENSE）。
+> 目前只有 `dsh-wsl-workspace` 一个 —— 理由见 `intent/dsh.md` 的「WSL 用户级 skill fork」节。
+> **新增 fork 前先问：能不能用配置解决？** 能就别 fork。
 
 详见 `intent/services.md` 的「ccp」小节。

@@ -29,11 +29,11 @@ DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经�
 | `dsh-terminal-panel` | 主栏全尺寸终端 | 最多 12 标签，刷新回放 256KB |
 | `@anionex/dsh-eye-care` | 暖色护眼主题 | 明暗双套，不劫持 Appearance |
 | `@weibaohui/dsh-sync` | 多机同步/备份 | Git + WebDAV + 本地文件夹三协议 |
-| `dsh-mnemon` | 长期记忆 | 附带 11 个子行（4 source + 5 strategy） |
+| `dsh-mnemon` | 长期记忆 | 附带 **10 个子行**（2 主行 + 3 source + 5 strategy；其中 4 个 strategy 默认禁用） |
 | `@linxin666/dsh-client-ui-skill-explorer` | **skill 管理中心** | 补内置缺口：GUI 里按来源浏览/启停/增删 skill。见「Skill 加载机制」 |
 | `@deepseek-ai/dsh-experimental-agent-team-profile` | **Agent Teams**（官方实验） | 多 teammate 协作、共享任务板。本会话正在使用 |
-| `@deepseek-ai/dsh-experimental-voice-input-bundle` | **语音输入**（官方实验） | 官方实验特性 |
-| `dsh-browser-cdp` | **浏览器自动化**（能力级） | 用**你已装的 Chrome**，37 个 `bcdp_*` 工具。见 `ecosystem.md` |
+| `@deepseek-ai/dsh-experimental-voice-input-bundle` | **语音输入**（官方实验） | ⚠️ **只有输入（STT），没有输出（TTS）** —— 做不了「像语音通话那样对话」 |
+| `dsh-browser-cdp` | **浏览器自动化**（能力级） | 用**你已装的 Chrome**，**38 个** `bcdp_*` 工具。见 `ecosystem.md` |
 | `dsh-wallpaper-bg` | **壁纸**（外观） | 只做壁纸，peer 仅 `react`。见 `ecosystem.md` |
 | `dsh-mobile` | 手机远程操控 DSH | ❌ **已卸载**，见下方专节（新机不要装） |
 
@@ -141,9 +141,12 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
    ⚠️ 2026-10-12 已卸载 `skin-center`，`blue-fantasy` 皮肤随之消失，**这是可接受的**
    —— 用户明确说「不需要花哨皮肤」。若将来要恢复皮肤，**不要**用 `skin-center`
    （见「外观插件教训」），优先 `dsh-theme-gallery`（3,709/月）。
-2. `ui-theme.preference` 应为 **`dark`**
-   ⚠️ 曾误改成 `light`（记错了「GUI 里选的是 light」）—— 已按本文件改回 `dark`。
-   **明暗以本文件为准。**
+2. `ui-theme.preference` —— **当前实机值 = `light`**（`cordis.patch.yml`，`fontSize: 17`）
+   ⚠️ **本文早期版本曾写「应为 `dark`」，那是 skin-center 覆盖时期的判断，现已作废。**
+   `skin-center` 已于 2026-10-12 卸载，配置不再被回写，**以实机实际值为准**。
+   🔴 **这是全机唯一「文档与实机直接对立」的配置项，未擅自更改** ——
+   明暗是用户的视觉偏好，AI **不要**自己切。用户若想要 `dark`，
+   去「设置 → 通用 → 外观」改，改完回来更新本行。
 3. **背景遮挡由用户自行调节，AI 不要写死数值**：
    - 现在归 `dsh-wallpaper-bg` 管：`overlayOpacity`（默认 40）、`lightFog`（默认 55）
    - 用户按壁纸深浅自己拉到看得清为止
@@ -164,7 +167,9 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 > **状态：✅ 已装入并生效**（基线 `v0.7.5`，提交 `f1f30d2`）。
 > 第一次基于 0.7.7 的尝试炸了并回滚，真因见下方「❌ 致命坑」。**重做方法：fork 0.7.5。**
 
-### 问题
+### 问题（**装 fork 之前**的状态）
+
+> ⚠️ 本节描述的是**问题本身**。该问题已由 fork 解决 —— 现状见下方「✅ 生效验证」。
 
 WSL 里有 **61 个 skill**，但 DSH 开 WSL 会话时**只加载 5 个**（4 内置 + tabbit）：
 
@@ -182,16 +187,18 @@ WSL 里有 **61 个 skill**，但 DSH 开 WSL 会话时**只加载 5 个**（4 �
 
 | 项 | 内容 |
 |---|---|
-| `src/host/wsl-skills.ts` | +176 行 |
-| `lib/index.js` | +150 行（S4：`lib/` 必须与 `src/` 一致） |
-| `tests/wsl-skills.test.ts` | +86 行，Windows 侧 36/36 通过 |
+| `src/host/wsl-skills.ts` | +172/−4 行（增删合计 176） |
+| `lib/index.js` | 构建产物，**不入库**（`forks/` 只放源码）。重建靠 `npm run build` |
+| `tests/wsl-skills.test.ts` | +85/−1 行（合计 86），Windows 侧 36/36 通过 |
 
 - `USER_DSH_RANK=400` / `USER_AGENTS_RANK=500`（对齐 DSH 官方 5 级优先级）
-- `resolveDistributionHome()` —— 经 `wsl.exe printenv HOME` 取真实 home
+- `resolveDistributionHome()` —— 经 `wsl.exe -d <distro> -- printenv HOME` 取真实 home
 - `discoverUserSkillRoots()` —— **带符号链接回退**（本机 `~/.agents/skills` 就是链接）
 - `discoverAllSkillRoots()` —— 合并项目级 + 用户级
 
-端到端实测：真实路径发现 **61 个 skill，source 标 `user-agents`**。
+端到端实测：WSL 侧 `~/.claude/skills` 发现 **61 个 skill**；
+经 skill-explorer API 观察 `user-agents` 组为 **62 个**（多一个 Windows 侧写入的 `tabbit`）。
+两个口径都对，别混用 —— 详见下方「✅ 生效验证」。
 
 ### ❌ 致命坑：0.7.5 → 0.7.7 **不是补丁升级**
 
@@ -202,8 +209,9 @@ resume failed for session "session-7029a315...": RemoteError:
 Unknown agent preset: wsl-standard (gateway/internal)
 ```
 
-**已排除是我的改动**：diff 只碰 `src/host/wsl-skills.ts`，preset/apply/materialize 零改动，
-`main` 与 `HEAD` 的 `variantGeneration` 命中数都是 10。
+**已排除是我的改动**：diff 只碰 `src/host/wsl-skills.ts`，preset/apply/materialize 零改动。
+（此处原写「main 与 HEAD 的 `variantGeneration` 命中数都是 10」，该数字**已无法复现**，
+且与下方表格的 0 / 4 冲突 —— 现已删除，以可复现的 npm 版本实测为准。）
 
 **真因是版本跳级**。`wsl-standard` 不是内置的，是**插件启动时从内置 preset 派生**的；
 上游 0.7.5 → 0.7.7 **重写了这套派生机制**：
@@ -345,18 +353,21 @@ dsh --version
 #      b) 读版本真值：
 #         resources/runtime/primary-runtime/runtime.json  →  "desktopVersion": "0.2.0-rc.2"
 
-# 2. 复制配置三件套
-cp templates/dsh/package.json       ~/.dsh/profiles/desktop/package.json
-cp templates/dsh/cordis.patch.yml   ~/.dsh/profiles/desktop/cordis.patch.yml
+# 2. 复制 DSH profile 配置（三件）
+cp templates/dsh/package.json         ~/.dsh/profiles/desktop/package.json
+cp templates/dsh/cordis.patch.yml     ~/.dsh/profiles/desktop/cordis.patch.yml
+cp templates/dsh/pnpm-workspace.yaml  ~/.dsh/profiles/desktop/pnpm-workspace.yaml
+#    ↑ 第三件容易漏。它含 nodeLinker: hoisted / autoInstallPeers: false，
+#      不复制会导致 pnpm 装出来的目录结构不同。
 
-# 3. 【重要】不要把模板里的 file: 依赖照抄到新机
-#    模板那条：
-#      "dsh-our-free-model": "file:C:/Users/20247/dsh-plugin-packages/dsh-our-free-model-2.0.0.tgz"
-#    指向旧机的私存 tgz —— 新机**没有这个文件**，照抄会让整个 install 失败。
-#    ✅ 正解：改用 npm 版（同一个包，现在最新 2.1.0）
-#      "dsh-our-free-model": "^2.1.0"
-#    （2026-10-10 实测：npm 上有作者正式发布的 2.0.0，peer 窗口 ^0.2.0-rc.1 正好匹配 0.2.0-rc.2；
-#      2026-10-12 本机已升到 2.1.0，peer 窗口不变，仍兼容）
+# 3. 模板里的依赖形态（2026-10-12 已改，照抄模板即可）
+#    ✅ dsh-our-free-model 现在是 npm 版："^2.1.0"
+#    ⚠️ 模板里唯一带机器绑定的是 dsh-wsl-workspace 的 link: 路径：
+#         "dsh-wsl-workspace": "link:C:/Users/20247/Downloads/minimax_work/dsh-wsl-workspace-fork"
+#       新机**必须改成自己的路径**，否则 install 报
+#       「cannot resolve profile bundle」（该目录不存在）。
+#    📌 历史：旧机曾用 file: 指向私存 tgz（dsh-plugin-packages/*.tgz），
+#       那条已废弃 —— 若你在旧备份里见到 file: 引用，那是残留，不要照抄。
 
 # 4. 逐个装 bundle（不要指望一条 install 全搞定，见下方「假失败」）
 #    Desktop 版最省事的是直接用 DSH 的 plugin_manager 工具逐个 install_bundle
@@ -432,16 +443,19 @@ eac 那 6 个是 `catalog.json` 的 `sealIds` **内置写死**的，不需要填
 > 判定对 EAC 模型根本不适用**，别拿 `availability.json` 去解释 EAC 模型不显示 ——
 > 查错地方了。EAC 的显示与否由**下一节的宿主闸门 + GitHub 授权**决定。
 
-**本机实测（2026-10-12，出口 `112.87.186.2` / CN）**：
+**本机快照（2026-10-12，出口 IP `64.118.149.187`）**：
+
+> ⚠️ **这是快照，不是恒定值。** 出口 IP 与逐模型状态都会变
+> （同一天内本机出口就从 `112.87.186.2` 变成了 `64.118.149.187`）。
+> **判断当前状态一律以 `availability.json` 现值为准**，下表只用于了解字段形态。
 
 | 模型 | 状态 |
 |---|---|
-| `muse-spark-1.2-contributor-free` | `region-blocked` |
-| `muse-spark-1.3-contributor-free` | `region-blocked` |
+| `muse-spark-1.2-contributor-free` / `muse-spark-1.3-contributor-free` | `available` |
 | `space-bunny-free` / `mimo-v2.6-flash-free` / `longcat-2.5-preview-free` / `nemotron-3.5-lightning-free` / `nemotron-3-ultra-free` | `available` |
 | `step-5-preview-free` / `ling-3.1-flash-free` | `throttled` |
-| `ling-3.0-flash-fin-free` / `jev-1.13-free` | `unavailable` |
-| `exo-free` | `unknown`（已废弃） |
+| `jev-1.13-free` | `unavailable` |
+| `ling-3.0-flash-fin-free` / `exo-free` | `unknown`（`exo-free` 已废弃） |
 
 **另一台机器缺模型时的排查顺序**：
 
@@ -453,8 +467,12 @@ Get-Content "$env:USERPROFILE\.dsh\our-free-model\availability.json"
 (Get-Content "$env:USERPROFILE\.dsh\our-free-model\settings.json" | ConvertFrom-Json).exposeRegionModels
 ```
 
-**两台机器对比时只看两个数**：`egress.country` 和那个具体模型的 `state`。
-不一致就是出口国籍问题，**与配置无关**，改配置没用。
+**两台机器对比时只看两个数**：`egress.ip` 和具体模型在 `results.<模型id>.state` 的值。
+
+> ⚠️ **字段名**：文件里**没有 `country` 字段** —— `egress` 只有 `{ ip }` 一个键。
+> 模型状态在 `results.<id>.state`，**不是**顶层 `models`。照老写法会取到空值。
+
+不一致就是出口问题，**与配置无关**，改配置没用。
 
 ### 🔴 EAC 通道（含「免费国际版 DeepSeek」）的 GitHub 授权闸门
 
@@ -530,13 +548,22 @@ minimumReleaseAgeExclude:
 
 ## 验证
 
-```bash
-# 全部 bundle 应为 active
-dsh plugin --profile desktop list
 ```
+# 全部 bundle 应为 active
+plugin_manager list_plugins     ← 用这个工具，不是 CLI
+```
+
+⚠️ **不要用 `dsh plugin --profile desktop list`** —— 该子命令是**纯 pnpm 透传**
+（`dsh plugin --profile <name> <pnpm-args...>`），只会列出 13 个已装包，
+**输出里根本没有 `fiberPhase` 字段**，无法证明任何加载状态。
+观察 `fiberPhase` 的**唯一正确途径**是 `plugin_manager` 工具的 `list_plugins` / `list_bundles`。
 
 期望：17 个 bundle 全部 `fiberPhase: active`、零加载失败。
 （若将来装 `dsh-mobile` 则为 18 个，但当前**不建议装**，见该节。）
+
+⚠️ **`active` 只代表「加载成功」，不代表「功能可用」。** 本机已两次踩到：
+内置 Tabbit 是 `active` 但浏览器本体没装；skin-center 是 `active` 但设置项静默注册失败。
+**下结论前必须实测功能**（见本文件开头「证据边界」原则）。
 
 ### 桌宠完整性自检（**每次 plugin_manager 操作后必做**）
 
@@ -653,7 +680,8 @@ $pet="$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-whale-girl-pet"
 1. **下载量是第二名的 24 倍**，生态事实标准
 2. 按**来源分类**浏览 —— 正好对上「Skill 加载机制」那套 5 级优先级
 3. 依赖极干净：peer 只有 `react` + `@deepseek-ai/dsh`
-4. **作者与已装的 skin-center 同一人**（`@linxin666`），兼容性风险低
+4. **作者与已卸载的 skin-center 同一人**（`@linxin666`）。⚠️ skin-center 已于 2026-10-12 卸载，
+   但 skill-explorer 同作者且工作正常 —— 作者相同**不再**作为兼容性依据，仅作背景
 
 **安装实测**（一次成功，无 EPERM）：
 
@@ -824,7 +852,8 @@ process.env.DSH_PRIMARY_RUNTIME ?? process.env.DSH_BUNDLED_PRIMARY_RUNTIME
 
 `SKILL.md` 需 frontmatter（`name` + `description`），**description 要写清触发场景** —— 模型只看这个描述决定是否加载。
 
-> ⚠️ `~/.dsh/skills` 在本机**尚不存在**。若想自建用户级 skill 且优先于 `.agents/skills`，用这个路径（400 > 500）。
+> ✅ `~/.dsh/skills` 在本机**已存在**（含自建 `evidence-boundary`）。
+> 想再加自建用户级 skill 就放这个路径 —— 它优先于 `.agents/skills`（400 > 500）。
 
 ### 📌 本仓库自建 skill：`evidence-boundary`（2026-10-12）
 
@@ -863,12 +892,26 @@ $h = @{ Origin="http://127.0.0.1:19387"; Referer="http://127.0.0.1:19387/" }
   ForEach-Object { "[$($_.key)] " + (($_.skills | ForEach-Object { $_.name }) -join ', ') }
 ```
 
-实测输出（2026-10-12）：
+实测输出（2026-10-12，**装 fork 前**）：
 ```
 [bundled     ] diagnose-windows-sandbox-acl, office-docx, office-pptx, office-xlsx
 [user-dsh    ] evidence-boundary          ← 自建，level=user-dsh, modelInvocable=true
 [user-agents ] tabbit
 ```
+
+**✅ 生效验证（装 fork 后，2026-10-12 实测）**：
+
+```
+[bundled     ]  4 个
+[user-dsh    ]  1 个   （evidence-boundary）
+[user-agents ] 62 个   （imfl-* 28、lark-* 30、meegle、tabbit …）
+──────────────────────
+合计           67 个   ← 装 fork 前只有 5 个
+```
+
+⚠️ **数字口径**：WSL 侧 `~/.claude/skills` 是 **61** 个；
+API 的 `user-agents` 组是 **62** 个 —— 因为 `~/.agents/skills` 除链接目标外
+还含 Windows 侧独立写入的 `tabbit`。两个数都对，**口径不同**，别混用。
 
 **设计取舍**：正文仅 ~2KB（每轮都进上下文，刻意写短）；只用 `name` + `description`
 两个 frontmatter 字段（与官方 office-* 一致）；`description` 中英双写触发词以提高命中率。
@@ -879,8 +922,9 @@ $h = @{ Origin="http://127.0.0.1:19387"; Referer="http://127.0.0.1:19387/" }
 > 以及 `prepared_not_observed` / `not_observed` 的证据边界词汇。
 > 本仓库只借鉴**理念**，不搬运其代码（工具名/路径/agent 机制全不同）。
 
-### 本机实际加载的 skill（2026-10-12）
+### 本机实际加载的 skill
 
+**装 fork 前（2026-10-12 上午，5 个）**：
 ```
 diagnose-windows-sandbox-acl   内置
 office-docx                    内置
@@ -888,6 +932,9 @@ office-pptx                    内置
 office-xlsx                    内置
 tabbit                         磁盘（~/.agents/skills）
 ```
+
+**装 fork 后（同日，67 个）**：上述 5 个 + `evidence-boundary`（自建）
++ **62 个 `user-agents`**（`imfl-*` 28、`lark-*` 30、`meegle`、`tabbit` …）。
 
 ⚠️ **这个清单每个会话可能不同** —— `project-dsh` / `project-agents` 依赖**当前项目根**。
 例如 `imfl_auto_test` 项目会额外加载该项目自己的 skill

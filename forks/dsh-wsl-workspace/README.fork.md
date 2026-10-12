@@ -73,9 +73,18 @@ DSH 用 `link:` 指向一份**运行副本**（放在 Windows 可访问的路径
 同步源码 → 运行副本（`<WIN_DIR>` 换成你实际的工作目录）：
 
 ```bash
-tar --exclude=node_modules --exclude=.git --exclude=lib -cf - . \
+# 1) 先编译（运行副本靠 lib/index.js 被 DSH 加载，缺了装不上）
+npm run build
+grep -c variantGeneration lib/index.js      # 必须为 0
+
+# 2) 连 lib/ 一起同步 —— 注意不要 --exclude=lib
+tar --exclude=node_modules --exclude=.git -cf - . \
   | tar -C /mnt/c/<你的用户名>/<某个工作目录>/dsh-wsl-workspace-fork -xf -
 ```
+
+> ⚠️ **不要把 `--exclude=lib` 加进这条命令。** 本仓 `forks/` 出于体积与
+> 「lib 是产物」的考虑**不入库**，但**运行副本必须有 `lib/`** ——
+> DSH 加载的就是它。漏了会导致插件装上但加载失败。
 
 完整的踩坑记录（安装路径的三个坑、回滚流程、`cherry-pick` 把编译产物带进来的陷阱）
 见 `../../intent/dsh.md` 的「WSL 用户级 skill fork」节。

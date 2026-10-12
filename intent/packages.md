@@ -97,7 +97,7 @@ sudo apt install -y cloc ffmpeg libattr1 ncurses-base ncurses-bin
 
 ```bash
 npm i -g \
-  @anthropic-ai/claude-code @openai/codex @github/copilot copilot-api \
+  @anthropic-ai/claude-code @openai/codex @github/copilot copilot-api command-code \
   @tencent-ai/codebuddy-code cline opencode-ai \
   @larksuite/cli @lark-project/meegle \
   harness-agent antigravity-claude-proxy \
@@ -109,12 +109,13 @@ npm i -g \
 | `@anthropic-ai/claude-code` | Claude Code CLI |
 | `@openai/codex` | OpenAI Codex CLI |
 | `@github/copilot` / `copilot-api` | GitHub Copilot |
+| `command-code` | Command Code CLI（曾漏记，2026-10-12 对照 `npm ls -g` 补上） |
 | `@tencent-ai/codebuddy-code` | CodeBuddy |
 | `cline` | Cline |
 | `opencode-ai` | opencode |
 | `@larksuite/cli` / `@lark-project/meegle` | 飞书 CLI（私有 registry 作用域 `@lark-codem`） |
 | `harness-agent` | DSH 相关 |
-| `antigravity-claude-proxy` | ⚠️ 见 `wsl.md` 注释：**已禁止默认拉起**（自打 Cloud Code，封号风险） |
+| `antigravity-claude-proxy` | ⚠️ **已禁止默认拉起**（自打 Cloud Code，封号风险）。原文档此处写「见 `wsl.md` 注释」，但 `wsl.md` 里并无该内容 —— 已改为就地说明 |
 | **`pnpm`** | ⚠️ `corepack enable` 会因 `/usr/local/bin` 不可写而失败，改用 `npm i -g pnpm` |
 
 **注意**：`~/.npmrc` 里 `prefix=/home/caixuf/.npm-global`，全局包装到**用户目录**，非 `/usr/local`。
