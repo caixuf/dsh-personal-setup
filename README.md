@@ -32,8 +32,8 @@ forks/                  ← 【例外】本机 fork 的第三方源码（仅源�
   dsh-wsl-workspace/    WSL 用户级 skill 补丁（基线 0.7.5）；说明见其 README.fork.md
 scripts/
   audit.sh              盘点**当前机**实际状态，供 AI 与新机对比
-  apply.sh              幂等落地（默认 --check 只读）
-  check-secrets.sh      提交前密钥扫描
+  apply.sh              幂等落地（默认 --check 只读；--dsh 落 DSH profile）
+  check-secrets.sh      提交前密钥扫描（⚠️ 手动跑，无 CI 强制）
 ```
 
 ## AI 配置新机的流程
@@ -56,7 +56,28 @@ bash scripts/audit.sh
 它会输出新机器已有的 apt/npm/pip 包、dotfile 现状、服务状态。
 **把它与 `intent/packages.md` 对比**，只补齐缺失的，不要重装已有的。
 
-### 第 3 步：按 intent 逐项落地
+### 第 3 步：落地 DSH profile（`apply.sh --dsh`）
+
+```bash
+bash scripts/apply.sh --dsh
+```
+
+它会：备份旧配置 → 复制三件（`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`）
+→ **在覆盖前**做机器绑定项自检 → 打印下一步。
+
+> ⚠️ **install 必须回 DSH 里用 `plugin_manager` 逐个 `install_bundle` 装**，
+> 脚本不代跑 —— 桌面版 install 有「假失败」判定逻辑（包已落盘只差登记），
+> 脚本代跑会绕过它，反而更难排查。
+
+**`link:` 依赖是跨机同步的头号杀手。** 如果 `package.json` 里有
+`"xxx": "link:C:/Users/<某人>/..."` 而那是**别人的机器**，`install` 会报
+`cannot resolve profile bundle "xxx"` 并**整装失败**。
+`--dsh` 会在覆盖前把这两种情况都点出来：
+
+- 模板里出现了 `link:` → 模板 bug（不该绑机器）
+- 你的现有配置里有 `link:` → **即将被覆盖**，配了 fork 的话会退回官方版
+
+### 第 4 步：按 intent 逐项落地其余部分
 
 按 `intent/` 各文件的「安装步骤」小节执行。关键原则：
 
@@ -66,9 +87,10 @@ bash scripts/audit.sh
 - **密钥要手填**：见 `intent/secrets.md`，AI **不应**尝试自动获取或生成密钥
 - **别被 `plugin_manager` 的「假失败」骗**：报 `failed` 或超时时，包往往**已完整落盘**、
   只差清单登记。判定与修复见 `intent/dsh.md` 的「两种假失败」
-- **free-model 走 npm，不要照抄 `file:` tgz 路径**（新机没有那个文件，照抄会让 install 失败）
+- **free-model 走 npm**（模板已是 `^2.1.0`）；若见到 `file:` 引用那是旧机残留，别照抄
+- **WSL fork 是选装**，不在模板默认清单里 —— 见下方「WSL fork」节
 
-### 第 4 步：验证
+### 第 5 步：验证
 
 每项落地后按该 intent 文件末尾的「验证」小节自检，不要一次性全做完再验证。
 
@@ -92,10 +114,16 @@ bash scripts/audit.sh
 | free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@^2.1.0`，新机优先用 npm 版**，无需 tgz（本机 2026-10-12 已切） |
 | **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | ⚠️ **该目录不受版本控制**（所在目录不是 git 仓）。DSH 用 `link:` 指向它，删了就装不上 |
 
-### WSL fork：改动已存进本仓
+### WSL fork：**选装**，不在模板默认清单里
 
-改动源码现保存在 **`forks/dsh-wsl-workspace/`**（MIT 许可，保留上游版权声明）。
-只含源码与测试，**不含 `lib/` 构建产物** —— 重建时跑 `npm run build` 生成。
+> ⚠️ **模板 `templates/dsh/package.json` 里是官方 `dsh-wsl-workspace: ^0.7.5`。**
+> 这是**刻意的** —— 之前模板里写的是本机 `link:` 绝对路径，
+> 别的机器没有该目录，`install` 会直接报
+> `cannot resolve profile bundle "dsh-wsl-workspace"` **导致整套安装失败**。
+> 反馈「照仓库同步没成功」就是这个原因。
+
+改动源码保存在 **`forks/dsh-wsl-workspace/`**（MIT，保留上游版权声明），
+只含源码与测试，**不含 `lib/` 构建产物**（`npm run build` 生成）。
 
 | 位置 | 角色 | 受版本控制 |
 |---|---|---|
@@ -106,9 +134,29 @@ bash scripts/audit.sh
 > ✅ **单点风险已解除。** 此前那 176 行改动只存在于本机 WSL 的 `~/code/`，
 > WSL 一重装就没了。现在它们在本仓里，跟着仓库走。
 
-新机上复现：从 `forks/dsh-wsl-workspace/` 出发 → `npm install && npm run build`（需 node ≥24）
-→ 查哨兵 `grep -c variantGeneration lib/index.js`（**必须为 0**）
-→ 复制到 Windows 可访问路径 → `link:` 装进 DSH。详见该目录的 `README.fork.md`。
+**什么时候才需要装这个 fork？** 你在 WSL 里有用户级 skill 目录
+（`~/.claude/skills` 或 `~/.agents/skills`，数一下有多少个）。
+**没有的话不用装**，官方版就够 —— 少一个机器相关依赖，少一个坏点。
+
+要装时（步骤见 `forks/dsh-wsl-workspace/README.fork.md` 与 `intent/dsh.md` 对应节）：
+
+```
+1. node >= 24，npm install && npm run build（末尾须 verify-lib OK）
+2. 哨兵 grep -c variantGeneration lib/index.js   ← 必须为 0，非 0 就是炸弹
+3. 复制到 Windows 可访问路径
+4. 把 profile 的 package.json 那一条改成 link:<你自己的路径>，再 install
+```
+
+**第 4 步的路径必须是新机自己的** —— 照抄别人的必然失败。
+
+### 模板与本机实机的已知差异（不是错误）
+
+| 项 | 模板 | 本机实机 | 原因 |
+|---|---|---|---|
+| `dsh-wsl-workspace` | `^0.7.5` | `link:<本机路径>` | 本机装了 fork 让 61 个 WSL skill 可见 |
+
+模板 = **通用基线**（任何机器直接可用）；实机 = 在基线上的**本机增强**。
+审计时不要把这个差异当「文档与实机不符」。
 
 ## 不在本仓库范围内
 

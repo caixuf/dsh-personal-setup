@@ -6,6 +6,7 @@
 #
 # 用法：
 #   bash scripts/apply.sh --check     # 只做体检，不改任何东西（默认）
+#   bash scripts/apply.sh --dsh       # 落地 DSH profile 配置（复制三件 + 体检）
 #   bash scripts/apply.sh --dotfiles  # 落地 dotfile 片段（追加式，幂等）
 #   bash scripts/apply.sh --systemd   # 落地 systemd 单元
 #   bash scripts/apply.sh --all       # 上述全部
@@ -14,6 +15,9 @@
 #   1. **追加而非覆盖** dotfile（新机已有内容必须保留）
 #   2. **幂等** —— 重复运行不产生重复内容（靠标记检测）
 #   3. **不碰密钥** —— 遇到需要密钥的地方停下并提示
+#   4. **DSH 侧只复制配置，不代跑 install** —— 桌面版 install 必须走
+#      plugin_manager 工具（见 intent/dsh.md），脚本代跑会绕过
+#      「假失败」判定逻辑，反而更难排查
 
 set -u
 
@@ -124,6 +128,79 @@ check() {
     say "5. 最后跑 scripts/apply.sh --check 复查"
 }
 
+do_dsh() {
+    hr "落地 DSH profile 配置"
+
+    WINUSER=$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d '\r')
+    [ -n "$WINUSER" ] || die "取不到 Windows 用户名（cmd.exe 不可用？）"
+
+    # WSL 下 /mnt/c/<user>；若路径形态不同（非标准挂载）则退回 C:\ 形式提示
+    PROFILE_DIR="$HOME/.dsh/profiles/desktop"
+    WIN_PROFILE_DIR="/mnt/c/Users/$WINUSER/.dsh/profiles/desktop"
+
+    if [ ! -d "$PROFILE_DIR" ] && [ ! -d "$WIN_PROFILE_DIR" ]; then
+        warn "两个可能的 profile 目录都不存在："
+        say "  $PROFILE_DIR"
+        say "  $WIN_PROFILE_DIR"
+        warn "若 DSH 装在 Windows 侧，请先启动一次 DSH Desktop 让它建出 profile"
+    fi
+
+    TARGET="$PROFILE_DIR"
+    [ -d "$TARGET" ] || TARGET="$WIN_PROFILE_DIR"
+
+    hr "🚨 机器绑定项自检（在覆盖**之前**跑）=="
+
+    # --- 1) 查【即将写入的模板】：模板里绝不能有 link: 机器路径 ---
+    _tpkgs="$REPO/templates/dsh/package.json"
+    _tlinks=$(grep -oE '"[^"]+": "link:[^"]*"' "$_tpkgs" 2>/dev/null || true)
+    if [ -z "$_tlinks" ]; then
+        say "✓ 模板无 link: 依赖 —— 通用基线，任何机器可直接 install"
+    else
+        warn "模板里居然有 link: 依赖（这是 bug，模板不该绑机器）："
+        printf '%s\n' "$_tlinks" | while IFS= read -r l; do
+            [ -n "$l" ] && warn "    $l"
+        done
+        warn "  👉 模板必须跨机可用；fork 之类机器增强请走 intent/dsh.md 的选装流程。"
+    fi
+
+    # --- 2) 查【目标已有配置】：即将被覆盖，别静默毁掉别人的 fork ---
+    _epkgs="$TARGET/package.json"
+    if [ -f "$_epkgs" ]; then
+        _elinks=$(grep -oE '"[^"]+": "link:[^"]*"' "$_epkgs" 2>/dev/null || true)
+        if [ -n "$_elinks" ]; then
+            warn "⚠️ 目标已存在 link: 依赖，**即将被模板覆盖**："
+            printf '%s\n' "$_elinks" | while IFS= read -r l; do
+                [ -n "$l" ] && warn "    $l"
+            done
+            warn "  若那是你刻意配的（如 WSL fork），覆盖后会退回官方版。"
+            warn "  备份会存为 .bak-<时间戳>，需要时从备份恢复。"
+        fi
+    fi
+
+    hr "复制三件（先备份）=="
+    mkdir -p "$TARGET"
+    STAMP=$(date +%Y%m%d-%H%M%S)
+    for f in package.json cordis.patch.yml pnpm-workspace.yaml; do
+        src="$REPO/templates/dsh/$f"
+        dst="$TARGET/$f"
+        if [ ! -f "$src" ]; then warn "模板缺失，跳过: $f"; continue; fi
+        if [ -f "$dst" ]; then
+            cp "$dst" "$dst.bak-$STAMP"
+            say "已备份 $f → $f.bak-$STAMP"
+        fi
+        cp "$src" "$dst"
+        say "已复制 $f"
+    done
+
+    hr "下一步（install 请在 DSH 里用 plugin_manager 逐个装）=="
+    say "1. 启动 DSH Desktop 一次（生成 profile 目录）"
+    say "2. 逐个 install_bundle，**不要**用 'dsh plugin install' 一把梭："
+    say "     判定与修复见 intent/dsh.md 的「两种假失败」"
+    say "3. 每次 install/remove 后跑桌宠完整性自检（intent/dsh.md 同节）"
+    say "4. 装完用 plugin_manager list_plugins 确认全部 fiberPhase: active"
+    say "   ⚠️ active ≠ 能用（内置 Tabbit、skin-center 都栽过），必须实测功能"
+}
+
 do_dotfiles() {
     hr "落地 dotfile 片段（追加式，幂等）"
     for f in "$REPO"/templates/bashrc.d/*.sh; do
@@ -185,14 +262,16 @@ do_systemd() {
 
 case "$MODE" in
     --check|"")  check ;;
+    --dsh)       do_dsh ;;
     --dotfiles)  do_dotfiles ;;
     --systemd)   do_systemd ;;
-    --all)       check; do_dotfiles; do_systemd ;;
+    --all)       check; do_dsh; do_dotfiles; do_systemd ;;
     -h|--help)
         cat <<'EOF'
 用法: bash scripts/apply.sh [选项]
 
   --check     只做体检，不改任何东西（默认）
+  --dsh       落地 DSH profile 配置三件（先备份）+ 机器绑定项自检
   --dotfiles  落地 dotfile 片段（追加式，幂等）
   --systemd   落地 systemd 单元
   --all       上述全部
