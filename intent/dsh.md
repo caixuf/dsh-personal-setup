@@ -240,88 +240,66 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 但 `adb devices` 是空的 —— 别以为没连上。**realme/OPPO 的 VID 是 `22D9`**：
 `PID_2764` = 纯 MTP，`PID_2765` = MTP + ADB。
 
-## ✅ `deepseek-harness-weixin`（微信 iLink 私人通道）—— 已装
+## ❌ `deepseek-harness-weixin`（微信 iLink）—— **装了就崩，已卸载**
 
-**这是「DeepSeek Bot」的正牌**：把 DSH 塞进**微信**，手机聊天即操控电脑。
-用户在手机聊天软件里发消息就能建任务、续聊、查进度、收交付物 ——
+**结论先写**：npm 上**只有 `0.2.5` 一个版本**（2026-08-25），它绑定旧的
+`@deepseek-ai/dsh-credentials-local@0.1.0-rc.7`，与本机宿主 **`0.2.0-rc.2`
+跨大代不兼容**。**装上去 = DSH 启动直接崩**，已卸载。
+
+### 🔴 我踩的坑：peer 开区间给了错误的安全感
+
+装之前我只看到 `peer: >=0.1.0-rc.7`，觉得"包含 0.2.0-rc.2 所以兼容"就装了。
+**错在没核对它实际依赖的具体版本**。崩溃链：
+
+1. 宿主 `0.2.0-rc.2` 判定 `dsh-credentials-local@0.1.0-rc.7` **不兼容** → 禁用该插件行
+2. `weixin-channel` 随之 `failed to import`
+3. 它是**必需插件** → 启动中止
+4. `credentials → connection → 其余 11 个插件` 整条链全部等待超时（崩溃对话框那一长串）
+
+> 💡 **版本豁免救不了**：宿主自己就说了 "may cause crashes or data loss"，
+> 且 API 是真代差，不是版本号声明问题。**要等作者发适配 0.2.0 的版本。**
+
+### 📌 纪律：装第三方插件前必须核对**依赖代差**
+
+| 看什么 | 为什么 |
+|---|---|
+| `peerDependencies` 的**开区间** | ⚠️ **会骗人** —— `>=0.1.0-rc.7` 看似兼容 0.2.0，实际跨代 |
+| `dependencies` 里的**具体版本** | ✅ 真正的风险点（`dsh-credentials-local@0.1.0-rc.7`） |
+| 包内 `cordis.patch.yml` 引用了哪些 host 服务 | ✅ 它要 `credentials`/`llm`/`session` 等，版本对不上就起不来 |
+
+**判据**：若它的 `dependencies` 或内部引用锁在 **`0.1.x`**，而宿主是 **`0.2.x`** → **别装**。
+
+### 顺带留档：它本来有什么功能（等适配版再用）
+
+微信 iLink 官方通道、**二维码登录不要 AppID/AppSecret**、每微信用户独立持久 session、
+收发图片与文件（微信 CDN 加密上传）、长按消息 `/approve <短码>` 批工具执行、
+内置 `/bot-ping` `/bot-status` `/bot-cancel`、**仅支持私聊**。
+同族还有 `qqbot` / `lark` / `dingtalk`(Stream，无需公网 IP) / `wecom`。
+
+⚠️ **别把这些当官方包** —— 它们**无 scope**（长得像官方），作者是 **`sliverp`** 个人，
+仓库 `github.com/sliverp/DeepSeek-harness-*`。真官方包全是 `@deepseek-ai/` scope。
+
+## ✅ `dsh-bot-gateway`（聊天软件当远程入口）—— 现用
+
+**用途**：把 QQ（NapCat OneBot v11 / 官方机器人）/ Telegram / 飞书 / 钉钉 接成 DSH 的
+**远程任务网关**。手机聊天里发条消息就能建任务、续聊、查进度、收交付物 ——
 **这是 `dsh-mobile` 没做成的那件事的另一条路**（见上一节）。
 
-**包**：`deepseek-harness-weixin@0.2.5`，MIT，**正常 bundle**（有 `dsh.bundle.patch`，
-`dsh add` 一次搞定，**不需要机器级那一套**）。peer `>=0.1.0-rc.7` 覆盖我们的 `0.2.0-rc.2` ✅
+**包**：`dsh-bot-gateway@0.3.9-beta`，MIT，**零运行时依赖、零 peer**。
 
-### 为什么选它而不是 `dsh-bot-gateway`
+> ✅ **选它的唯一理由：没有版本代差风险。** `testedDshVersion: 0.2.1-alpha.1`、
+> `minDshVersion: 0.1.2-alpha.4`、`engines: node >=20`，**无任何 peer 约束** ——
+> 所以不会像 weixin 那样把宿主拖崩。
 
-| | `deepseek-harness-weixin`（现用） | `dsh-bot-gateway`（已卸） |
+### 与 `deepseek-harness-*` 的取舍
+
+| | `dsh-bot-gateway`（现用） | `deepseek-harness-*` |
 |---|---|---|
-| 通道 | **微信 iLink 官方** | QQ(NapCat) / Telegram / 飞书 / 钉钉 |
-| 凭证 | **二维码登录**，不要 AppID/AppSecret | 各平台自建应用凭证 |
-| 形态 | **正常 bundle** | 宿主插件（需机器级 patch + node_modules 副本） |
-| 副作用 | 无 | ⚠️ 装它会自动在 WSL 建 NapCat 发行版（**108 MB** `ext4.vhdx`） |
-| 维护 | 协议跟随官方 | 依赖第三方 QQ 生态 |
-
-> 🔴 **别把 `deepseek-harness-*` 当成官方包** —— 它们**无 scope**（长得像官方），
-> 但作者是 **`sliverp`**（个人），仓库 `github.com/sliverp/DeepSeek-harness-*`。
-> 真官方包全是 `@deepseek-ai/` scope，仓库在 `deepseek-ai/deepseek-harness`。
->
-> 同族还有：`deepseek-harness-qqbot`（QQ 官方机器人）、`-lark`（飞书）、
-> `-dingtalk`（钉钉 Stream，**无需公网 IP**）、`-wecom`（企业微信）。
-> 五个都是 bundle，peer 相同，按需换装即可。
-
-### 前提：微信里要有官方「ClawBot」插件
-
-**这不是缺 key、也没有单独的 key 申请页面** —— 你的微信账号必须先出现
-「微信 → 我 → 设置 → 插件 → ClawBot」。若没有这个入口，**通道建不起来**。
-
-### 登录
-
-- **Web 端**（本机走这条）：DSH Web 里保留 `/weixin-login` 辅助入口
-- **命令行走 URL 模式**（免扫码，适配远程/无头机）：
-
-```sh
-dsh plugin --profile desktop exec dsh-weixin login --url --wait
-```
-
-- 换手机时**重新扫码即可**（登录态在 Harness 凭据服务，不进插件配置）
-
-### 能力
-
-每个微信用户 = 一个**独立持久 session**；Agent preset 生命周期、仓库记忆、
-工具执行与 Web live session 完全复用。支持公司白名单/禁用策略/有界并发、
-刷屏抑制、重试、幂等与完整清理；收发**图片与文件**（经微信 CDN 加密上传），
-图片默认另存附件并降级为文字说明。内置 `/bot-ping` `/bot-help` `/bot-status`
-`/bot-cancel` 等；`/new` `/reset` 建新 session；**长按消息可批准工具执行**
-（同会话发 `/approve <短码>` 或 `/reject <短码>`）。
-
-⚠️ **ClawBot/iLink 网关目前仅支持私聊**。
-
-### 验证
-
-```bash
-# 插件状态（fiberPhase 必须 active；null = 还没加载，需重启 DSH）
-dsh plugin --profile desktop list | grep weixin
-```
-
-> ⚠️ **`install_bundle` 报 `build-blocked` 不代表失败** —— 包会落盘，但
-> `package.json` / `bundles` 可能没登记，需手工补 + `pnpm install`。
-> 被拦的 `@google/genai` / `protobufjs` **不是本插件的依赖**（它只要
-> `dsh-credentials-local` / `schemastery` / `qrcode-terminal`），不影响功能。
-> 见下方「pnpm 在本机的三个坑」。
-
-## ❌ `dsh-bot-gateway`（聊天软件当远程入口）—— **已卸载**
-
-> 保留此节供将来参考：它是**宿主插件**，机制与上面那个完全不同。
-> 若将来要装宿主插件（无 `dsh.bundle.patch`、只有 `dsh.client` 的那种），
-> **两件事缺一不可**，且模板在 `templates/dsh/cordis.machine-patch.yml`：
-
-### 🔴 挂载必须用**机器级** patch（换机必读）
-
-这是本插件**最关键**、也最容易做错的一点。README 原文警告：
-
-> 插件由组合树的**一行**组成（在 **`<dsh-home>\cordis.patch.yml` 机器级补丁层** ——
-> 注意**不是** `profiles\<name>\cordis.patch.yml`：DSH Desktop 桌面壳在后端启动失败时会把
-> 整个 `profiles` 目录隔离为 `profiles.broken-<时间戳>` 并重建，**profile 级补丁会随之丢失**；
-
-**包**：`dsh-bot-gateway@0.3.9-beta`，MIT，**零运行时依赖、零 peer**（不会撞 DSH 的窄 peer 窗口）。
+| 通道 | QQ(NapCat) / Telegram / 飞书 / 钉钉 | 微信 iLink / QQ官方 / 飞书 / 钉钉 / 企微 |
+| 凭证 | 各平台自建应用（**Telegram 最省**，@BotFather 拿 token） | 微信只需扫码 |
+| 与宿主代差 | ✅ **无 peer，无风险** | ❌ 锁 `0.1.x`，**装了就崩** |
+| 形态 | 宿主插件（要机器级两件事，见下） | 正常 bundle |
+| 副作用 | ⚠️ 装它会自动建 NapCat WSL 发行版（108 MB） | 无 |
 
 ### 🔴 挂载必须用**机器级** patch（换机必读）
 
@@ -399,6 +377,36 @@ Get-Content "$env:USERPROFILE\.dsh\bot-gateway\boot.log"
 > 💡 NapCat 走 **WSL2 内置运行，免 Docker**：插件把 Docker 镜像导入为 Windows 内置的
 > WSL2 发行版并全程托管（本机已有 Docker 镜像时 `docker export` 复用，零下载）。
 > 备选 docker 模式需已装 Docker Desktop。
+> ⚠️ **代价**：装 NapCat 会在 WSL 注册一个发行版 `napcat-dsh-builder`（**108 MB**
+> `ext4.vhdx`）。**不想要 QQ 通道就别在看板点 NapCat 安装** ——
+> 只用 Telegram 完全不会触发。卸载时记得
+> `wsl --unregister napcat-dsh-builder`（会连带删掉那个 vhdx）。
+
+### ✅ 推荐先用 Telegram（唯一不需要公网 IP 的通道）
+
+| 通道 | 公网 IP | 凭证门槛 |
+|---|---|---|
+| **✈️ Telegram** | **❌ 不需要**（长轮询主动外拉） | @BotFather 拿 token + @userinfobot 查自己的数字 ID |
+| 🐦 飞书 | 需要（长连接可免） | 企业自建应用 |
+| 💬 钉钉 | 不需要（Stream 模式） | 企业自建应用 |
+| 🐱 QQ(NapCat) | 不需要 | 挂一个 QQ 号 + 扫码 |
+
+**Telegram 三步**（都在**手机**上做，AI 干不了）：
+
+1. Telegram 找 **@BotFather** → `/newbot` → 拿 **bot token**
+2. Telegram 找 **@userinfobot** → 发一条 → 拿自己的**数字 user id**
+3. DSH 设置 → 机器人网关 → ✈️ Telegram → 填 token 与 `allowUsers`
+   （也可看板点「一键安装」，它会调 `@BotFather` 并保存结果）
+
+配好后手机 Telegram 里给你的 bot 发 `/new` 就能建任务。
+
+> ⚠️ **国内直连 Telegram API 不通**，而插件**不读代理环境变量**（长轮询走 `fetch`）。
+> 实测可行：`NODE_USE_ENV_PROXY=1` + `HTTPS_PROXY=http://127.0.0.1:7898`
+> 能让 Node 24 的 `fetch` 走代理（已实测 HTTP 200）。
+> 这要改 DSH 启动环境，属于**系统级改动**，按 `conventions.md` 须先问用户。
+> 另两条不改环境的路：插件 `apiBase` 指向本地反代；或系统层全局代理。
+> **出网代理归 7897（星连）那套，端口分工是用户定的硬规矩，不要动。**
+
 
 ### 桌面截图监控（值得一提的能力）
 

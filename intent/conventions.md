@@ -201,3 +201,36 @@ OMH 把 142 个 skill 的共性抽到一份 `skill-common-rail.md`，理由是�
 > 是这次事故的**唯一成因**。改模板 ≠ 改机器。
 
 **自动化**：`scripts/audit-dsh-drift.sh` 专查这件事，改完模板或增删插件后跑一次。
+
+## 十一、🔴 装第三方插件前，核对**依赖代差**（别只看 peer）
+
+> 来源：2026-10-12，AI 装 `deepseek-harness-weixin` 把用户的 DSH **干崩了**。
+
+**事故**：该包 `0.2.5` 声明 `peerDependencies: { "@deepseek-ai/dsh-llm": ">=0.1.0-rc.7", ... }`。
+AI 看到「`>=0.1.0-rc.7` 包含 `0.2.0-rc.2`」就判**兼容**，直接装 —— 结果：
+
+1. 宿主判定它依赖的 `dsh-credentials-local@0.1.0-rc.7` **不兼容** → 禁用该插件行
+2. 插件 `failed to import`，而它是**必需插件** → **启动中止**
+3. `credentials → connection → 其余 11 个插件` 整条链等待超时，DSH 起不来
+
+用户原话：「**卧槽了，兄弟，你差点把自己干掉了**」。
+
+**纪律 —— 三个都要看**：
+
+| 看什么 | 会不会骗人 |
+|---|---|
+| `peerDependencies` 的**开区间**（`>=0.1.x`） | ⚠️ **会骗人**。`>=0.1.0-rc.7` 看似覆盖 `0.2.0-rc.2`，实际**跨大代** |
+| `dependencies` 里的**钉死版本** | ✅ 真正的风险点（如 `dsh-credentials-local@0.1.0-rc.7`） |
+| 包内 `cordis.patch.yml` 引用了哪些 host 服务 | ✅ 它要 `credentials`/`llm`/`session`，版本对不上就起不来 |
+
+**快速判据**：
+
+- 它的 `dependencies` / 内部引用锁在 **`0.1.x`**，而宿主是 **`0.2.x`** → ❌ **别装**
+- `dsh.compat.testedDshVersion` 与宿主差 **一个大版本以上** → ⚠️ 先别装
+- **无 peer 约束**（如 `dsh-bot-gateway`）→ ✅ 最安全，优先选这种
+
+**顺序纪律**：这类插件**先查版本、再问要不要装**。宿主插件装上即生效，
+卸载前它可能已经把启动搞崩了。
+
+> 💡 同一天还栽在 `dsh-mobile`（CLI 报 `ERR_MODULE_NOT_FOUND`，但 README 让跑它）。
+> 共同点：**「文档说能装」与「实际装得上」脱节**。判据只能是**本机实测**，不是 README。

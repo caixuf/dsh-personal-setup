@@ -6,7 +6,7 @@
     "@deepseek-ai/dsh-llm-pi-ai": "^0.2.0-rc.2",
     "@linxin666/dsh-client-ui-skill-explorer": "^0.4.6",
     "@weibaohui/dsh-sync": "^0.4.8",
-    "deepseek-harness-weixin": "^0.2.5",
+    "dsh-bot-gateway": "^0.3.9-beta",
     "dsh-browser-cdp": "^0.18.19",
     "dsh-mnemon": "^0.5.25",
     "dsh-our-free-model": "^2.1.0",
@@ -37,8 +37,7 @@
         "@deepseek-ai/dsh-experimental-voice-input-bundle",
         "dsh-browser-cdp",
         "dsh-wallpaper-bg",
-        "dsh-theme-studio",
-        "deepseek-harness-weixin"
+        "dsh-theme-studio"
       ]
     }
   }

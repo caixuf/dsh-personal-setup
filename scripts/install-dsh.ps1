@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     按仓库模板把 DSH profile 的 bundle 全部装上。
 
@@ -158,10 +158,10 @@ if (Test-Path $machinePatchTpl) {
 
 # 宿主插件（无 dsh.bundle.patch，挂机器级而非 profile）需要机器级 node_modules 副本。
 # 判据：包的 package.json 有 dsh.client 但没有 dsh.bundle。
-# 当前 2026-10-12：dsh-bot-gateway 已卸载，此列表为空 ——
-# 现在用 deepseek-harness-weixin（微信），它是**正常 bundle**，走 dsh add 即可。
+# 当前 2026-10-12：只有 dsh-bot-gateway（**无 peer 约束**，
+# testedDshVersion=0.2.1-alpha.1，故不存在与宿主的代差问题）。
 # 将来新增宿主插件时把包名加进来。
-$hostPlugins = @()
+$hostPlugins = @('dsh-bot-gateway')
 foreach ($hp in $hostPlugins) {
     $src = Join-Path $profileDir "node_modules/$hp"
     $dst = Join-Path $dshHome "node_modules/$hp"
