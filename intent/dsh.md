@@ -388,6 +388,75 @@ dsh plugin --profile desktop install
 3. 桌宠体检 **70/70、51/51、4/4 分毫未动**（因走 `plugin_manager` 而非裸 `pnpm install`，
    避开了「rename 包目录 → `assets/` 被占 → EPERM」那条路径）
 
+### 🔴 免费模型「可用性」是**探测出来的**，不是配置出来的（换机必读）
+
+**最常见的误解**：以为换了机器、装了同一个插件，免费模型列表就该一样。
+**不是。** 列表由**出口 IP 的国籍**决定，同一份配置在两台机器上可以完全不同。
+
+**机制**（见 `src/probe.js`，2026-10-12 读源码确认）：
+
+上游网关**不会**声明哪些模型可用 —— 它只给一个扁平 id 列表，排除只在请求被拒
+（返回 `RegionError`）时才显现。所以插件只能**发一个最小请求去问**：
+每 `probeIntervalMinutes`（默认 15）分钟，对目录里每个模型发一次
+`ping`（`max_tokens: 16`），按返回判定：
+
+| 判定 | 触发 | 在模型选择器里 |
+|---|---|---|
+| `available` | 正常回包 | ✅ 显示 |
+| `region-blocked` | 网关回 "This model is not available in your country" | ⚠️ 标灰（需 `exposeRegionModels`） |
+| `unavailable` | 400/404/422，或消息含 `no such model` 等 | ❌ 隐藏 |
+| `throttled` | 配额 | ❌ 隐藏 |
+| `unknown` | 5xx / 超时 / 没收到答复 | ❌ 隐藏 |
+
+> ⚠️ **5xx 不当作不可用**：那是网关自己的故障。源码注释明确写了这条不对称设计
+> —— 「列表里留一个过期条目，用户只是白跑一轮；而一个因抖动消失的模型，
+> 用户要等一整轮重探才知道」。曾因把 503 的 "Service Unavailable" 当判据，
+> 把一个好模型踢出了列表。
+
+**两条通道**（模型 id 形态不同）：
+
+| 通道 | id 形态 | 例子 |
+|---|---|---|
+| `kilo` | 裸 id | `step-5-preview-free`、`nemotron-3.5-lightning-free`、`ling-3.1-flash-free` |
+| `eac` | `org/model` | **`deepseek-ai/deepseek-v4.1-flash`**（即「免费国际版 DeepSeek」）、`moonshotai/kimi-k3`、`z-ai/glm-5.3` |
+
+eac 那 6 个是 `catalog.json` 的 `sealIds` **内置写死**的，不需要任何配置；
+**但它们同样受 region 门控**（UI 原文：*"This model is gated by egress country.
+Once a proxy changes your egress, the next probe moves it into the available group
+by itself."*）。
+
+**本机实测（2026-10-12，出口 `112.87.186.2` / CN）**：
+
+| 模型 | 状态 |
+|---|---|
+| `muse-spark-1.2-contributor-free` | `region-blocked` |
+| `muse-spark-1.3-contributor-free` | `region-blocked` |
+| `space-bunny-free` / `mimo-v2.6-flash-free` / `longcat-2.5-preview-free` / `nemotron-3.5-lightning-free` / `nemotron-3-ultra-free` | `available` |
+| `step-5-preview-free` / `ling-3.1-flash-free` | `throttled` |
+| `ling-3.0-flash-fin-free` / `jev-1.13-free` | `unavailable` |
+| `exo-free` | `unknown`（已废弃） |
+
+**另一台机器缺模型时的排查顺序**：
+
+```powershell
+# 1. 看出口国籍与逐模型状态（这是唯一权威依据）
+Get-Content "$env:USERPROFILE\.dsh\our-free-model\availability.json"
+
+# 2. 看开关：exposeRegionModels=false 会让被挡模型彻底消失（而非标灰）
+(Get-Content "$env:USERPROFILE\.dsh\our-free-model\settings.json" | ConvertFrom-Json).exposeRegionModels
+```
+
+**两台机器对比时只看两个数**：`egress.country` 和那个具体模型的 `state`。
+不一致就是出口国籍问题，**与配置无关**，改配置没用。
+
+**真要改，只有两条路**（都涉及改网络出口，⚠️ 按 `conventions.md` 属于要先问的范畴）：
+
+1. **换出口** —— `settings.json` 的 `egress` 段（当前 `enabled: false`）：
+   - `client` 模式：填现成的 http/https/socks5 代理地址
+   - `subscription` 模式：插件自己拉起 mihomo（Clash 核心）跑订阅链接
+   改完**等下一轮探测**（默认 15 分钟）才会变。
+2. **开 `exposeRegionModels`** —— 只让被挡模型**显示出来并标灰**，不改变可用性。
+
 ### ⚠️ pnpm 会自动写入 `minimumReleaseAgeExclude`
 
 安装 24 小时内发布的新版本时，pnpm 的供应链防护（`minimumReleaseAge`，默认 1440 分钟）本会拦截。
@@ -774,6 +843,7 @@ tabbit                         磁盘（~/.agents/skills）
 | `~/.dsh/profiles/desktop/{package.json,cordis.patch.yml,pnpm-lock.yaml}` | 插件配置 | ✅ 小且关键 |
 | `~/.dsh/profiles/desktop/node_modules/` | 依赖产物 100.8 MB | ❌ **不要复制**，重建 |
 | `~/.dsh/skin-center-active.json` | ~~皮肤选择~~ | ⚪ **已失效**，插件卸载后无人读取，可不迁移 |
+| `~/.dsh/our-free-model/{settings,availability,catalog}.json` | 免费模型的开关 / **逐模型可用性** / 目录 | ⚠️ **不要复制** `availability.json` —— 它是本机出口 IP 的探测结果，换机必然失效（见「可用性」一节） |
 | `~/.dsh/.credentials.yaml` | 密钥 19 条 | ❌ 见 `secrets.md` |
 | `~/.dsh/sessions/` | 会话记录 11 MB | 可选 |
 | `C:\Users\<user>\dsh-plugin-packages\*.tgz` | free-model 的旧机私存副本 | ⚠️ 不在 `~/.dsh` 内、本仓库也不含；**新机不必带它，改用 npm 版** |
