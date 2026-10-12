@@ -2,8 +2,8 @@
 
 ## 这是什么
 
-DSH 桌面端的插件组合与外观配置。共 **13 个 bundle**，全部经验证 `fiberPhase: active`。
-（第 13 个 `dsh-mobile` 已装但**用户决定搁置**，详见「dsh-mobile」一节 —— 新机可不装。）
+DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经验证 `fiberPhase: active`。
+（曾装过 `dsh-mobile`，因 CLI 损坏 + 流程繁琐**已卸载**，踩坑记录见下方「dsh-mobile」一节 —— 新机**不要装**。）
 
 ## 约束（AI 必读）
 
@@ -30,7 +30,7 @@ DSH 桌面端的插件组合与外观配置。共 **13 个 bundle**，全部经�
 | `@anionex/dsh-eye-care` | 暖色护眼主题 | 明暗双套，不劫持 Appearance |
 | `@weibaohui/dsh-sync` | 多机同步/备份 | Git + WebDAV + 本地文件夹三协议 |
 | `dsh-mnemon` | 长期记忆 | 附带 11 个子行（4 source + 5 strategy） |
-| `dsh-mobile` | 手机远程操控 DSH | ⚠️ **已装但搁置**，见下方专节 |
+| `dsh-mobile` | 手机远程操控 DSH | ❌ **已卸载**，见下方专节（新机不要装） |
 
 ### ⚠️ 包装错名陷阱（曾踩过）
 
@@ -59,13 +59,17 @@ DSH 桌面端的插件组合与外观配置。共 **13 个 bundle**，全部经�
 
 ⚠️ 两者都**没有** `dsh-kb-rag` 的「混合检索 + 交叉编码器重排 + 页码级引用」，属降级替代。
 
-## ⚠️ `dsh-mobile`（手机远程操控）—— 已装但搁置
+## ❌ `dsh-mobile`（手机远程操控）—— **已卸载，新机不要装**
 
-**版本**：插件 `0.6.3`（npm `dsh-mobile`），Android App `0.6.2`（要求 Android 10+）。
-**状态（2026-10-12）**：装好了，但**用户决定放弃，等官方改进**。局域网初始化已回滚，
-`control.json` 为 `{"version":1,"enabled":false}`，端口 3443 **未监听**。
+**版本**：曾装插件 `0.6.3`（npm `dsh-mobile`）+ Android App `0.6.2`（要求 Android 10+）。
 
-### 为什么搁置
+**状态（2026-10-12 复核）**：插件**已完全卸载** —— `package.json`、`bundles`、
+`pnpm-lock.yaml`、`node_modules`、`cordis.patch.yml` **五处均无残留**。
+`~/.dsh/mobile-access/` 目录已删除，端口 3443 **未监听**，局域网**未暴露**。
+
+> 下文保留完整踩坑记录，供**将来官方修好后**重装时参考，避免重走一遍。
+
+### 为什么卸载
 
 不是装不上，是**流程太别扭**，五道坎要人工跨（详见下「踩坑清单」）。
 用户原话：「还是不行啊，好麻烦，算了吧，等官方搞」。
@@ -221,8 +225,8 @@ minimumReleaseAgeExclude:
 dsh plugin --profile desktop list
 ```
 
-期望：13 个 bundle 全部 `fiberPhase: active`、零加载失败。
-（不装 `dsh-mobile` 时是 12 个。）
+期望：12 个 bundle 全部 `fiberPhase: active`、零加载失败。
+（若将来装 `dsh-mobile` 则为 13 个，但当前**不建议装**，见该节。）
 
 ### 桌宠完整性自检（**每次 plugin_manager 操作后必做**）
 
