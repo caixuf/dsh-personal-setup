@@ -109,6 +109,38 @@ DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经�
 > 💡 **「模板有本机无」本身不是错误**：`templates/dsh/` 是**目标基线**，本机跑
 > `apply.sh --dsh` 才会追上。**问题在于文档把「目标态」写成了「已完成态」。**
 
+### ✅ 该 drift 已于 2026-10-12 20:11 全部修复（本节表格是**修复前**的历史快照）
+
+用户要求「本机同步到模板」后已执行：装齐 4 个缺失包 + `dsh-llm-pi-ai`、
+升 `dsh-our-free-model` 到 2.1.0、卸 `skin-center` 与 `dsh-mobile`（真删干净）、
+profile patch 与 bundles 名单对齐模板。
+
+**修复后的核对结果**：
+
+| 核对项 | 结果 |
+|---|---|
+| `package.json` 依赖（15 条） | ✅ 集合一致、版本号全一致 |
+| `bundles` 名单（17 条） | ✅ 完全一致 |
+| `pnpm-workspace.yaml` | ✅ 一致（含 `minimumReleaseAge: 0`） |
+| `cordis.patch.yml` 8 个条目 | ✅ 除 `agent-default-model` 外全一致 |
+| 机器级 `cordis.patch.yml` | ✅ 结构一致（`bot-gateway` 行） |
+| 磁盘实装 vs 清单 | ✅ 7 个在、2 个已清除 |
+| 桌宠不变式 | ✅ 70/70 · 51/51 · 4/4 |
+| `audit-dsh-drift.sh` 四项 diff | ✅ 全「无」 |
+
+**唯一有意保留的差异** —— `agent-default-model`：
+
+| | 值 |
+|---|---|
+| 模板 | `buddy / deepseek-v4.1-flash / reasoningEffort: high` |
+| 本机 | `buddy / space-bunny / reasoningEffort: max` |
+
+**这是运行时会话的选择，不是配置漂移** —— 会话启动时选的模型会被写回这一条。
+故 **模板不锁死它**；换机时用模板的 `buddy/deepseek-v4.1-flash` 作基线即可。
+
+> 💡 **判据**：配置类条目（模型清单、上限、input 类型）必须两边一致；
+> 「当前选了什么」属运行时状态，允许与模板不同。
+
 **跑一次就知道差多少**：
 
 ```bash
