@@ -400,12 +400,106 @@ Get-Content "$env:USERPROFILE\.dsh\bot-gateway\boot.log"
 
 配好后手机 Telegram 里给你的 bot 发 `/new` 就能建任务。
 
-> ⚠️ **国内直连 Telegram API 不通**，而插件**不读代理环境变量**（长轮询走 `fetch`）。
-> 实测可行：`NODE_USE_ENV_PROXY=1` + `HTTPS_PROXY=http://127.0.0.1:7898`
-> 能让 Node 24 的 `fetch` 走代理（已实测 HTTP 200）。
-> 这要改 DSH 启动环境，属于**系统级改动**，按 `conventions.md` 须先问用户。
-> 另两条不改环境的路：插件 `apiBase` 指向本地反代；或系统层全局代理。
-> **出网代理归 7897（星连）那套，端口分工是用户定的硬规矩，不要动。**
+**2026-10-12 本机已跑通**：`@big_kunbot`，`userId 8192862144`，
+状态 `connected`，跑完一轮完整对话（它回复了工作目录说明）。
+
+### 🔴 坑 1：`allowUsers` 填成字段名 → bot 把你当陌生人
+
+看板那个输入框的 placeholder 写 `User ID，每行一个`，很容易让人填错。
+踩坑实录：把字符串 `"allowUsers"` 存了进去 —— 等于「只允许一个叫 allowUsers 的用户」，
+而 Telegram 传来的是**纯数字 ID**，对不上 → 消息被静默丢弃，
+**表现为「手机里找不到 bot / 它装死」**。
+
+**判定**：`GET /bot-gateway/api/settings` → `config.adapters.telegram.allowUsers`，
+必须是数字数组，如 `["8192862144"]`。
+
+**最省事的取 ID 办法**：**给 bot 发一条消息**，然后从
+`GET /bot-gateway/api/status` 的 `tasks[].userId` 直接读 —— 不用手抄。
+
+**改它的正确 API**（面板 input 卡住时的救命通道）：
+
+```powershell
+# 允许某人
+POST /bot-gateway/api/users  {"key":"telegram:<你的ID>","persona":"admin"}
+# 全局设置
+POST /bot-gateway/api/settings {"model":{"provider":"minimax-cn","model":"MiniMax-M3.1-Flash-Preview"}}
+```
+
+> 💡 **`/bot-gateway/api/settings` 不回显 token**（打码），但**接受 token 写入** ——
+> 所以 AI 可以代你配而**拿不到 token**。`persona` 是 **per-user** 的（走 `api/users`）。
+
+### 🔴 坑 2：Telegram 的 `getUpdates` 会互相抢游标
+
+想用 `getUpdates` 验证 token 时它**返回空** —— 因为插件的长轮询正占着这个游标，
+消息被它消费了。**这是正常现象，不是 token 失效**。
+验证 token 请用 `getMe`（返回 bot 自己的 id/username）。
+
+### 🔴 坑 3：token 贴进对话 = 已泄露
+
+用户在对话里直接贴了 `@BotFather` 给的 token。
+**处理纪律**：`8522814686:AAEi...` 这种一旦出现在对话/日志/截图里，
+**按已泄露对待** —— 教用户 `@BotFather` → `/revoke` 重新生成，**先换 token 再开高权限**。
+
+顺序不能反：token 未换 + `persona=admin`（零沙箱）= 门没锁。
+换完用 `POST /bot-gateway/api/settings` 更新，再看 `/bot-gateway/api/status`
+确认回到 `connected`。
+
+### ⚠️ 国内直连 Telegram API 不通
+
+插件**不读代理环境变量**（长轮询走 `fetch`）。实测：
+- 经代理 `GET https://api.telegram.org` → **HTTP 200**（`127.0.0.1:7897`/`7898` 都可）
+- 但插件自己连 → `fetch failed`，状态在 `reconnecting` ↔ `connected` 之间摆动
+
+**正解**：`NODE_USE_ENV_PROXY=1` + `HTTPS_PROXY=http://127.0.0.1:7898`
+能让 Node 24 的 `fetch` 走代理（**已实测 HTTP 200**）。
+但这要改 DSH 启动环境，属**系统级改动**，按 `conventions.md` 须先问用户。
+另两条不改环境的路：插件 `apiBase` 指向本地反代；或系统层全局代理。
+**出网代理归 7897（星连）那套，端口分工是用户定的硬规矩，不要动。**
+
+### ⚠️ 「怎么和它聊」的两件事
+
+**① 它只有一条会话（未分组是 Telegram 私聊的固有特性）**
+
+`tasks[].chatKey` 恒为 `telegram:8192862144` —— **私聊没有会话组概念**，
+所有话题都堆在同一条任务里。**换话题要自己发 `/new`**。
+`sessionRotateTurns` 控制自动轮换（本机已调到 **128**）。
+
+**② 「它什么都能干吗」不只取决于模型，更取决于 persona**
+
+| persona | 含义 |
+|---|---|
+| `allround` | 完整任务执行，**但限制在本用户文件夹内**（它会自己说「你电脑上别的文件夹我可碰不到」） |
+| **`admin`** | **受信用户：无文件沙箱限制，可指定任意工作目录** |
+| `life` / `companion` / `jubensha` / `minigame` | 生活助手 / 陪伴 / 剧本杀 / 小游戏 |
+
+**`admin` 解除了沙箱，但默认工作目录仍是 `telegram-<ID>`** ——
+要它去别处干活，**得在消息里直接给路径**，或在看板用户档案里设 `dataRoot`。
+
+> ⚠️ `admin` + 未换 token = Telegram 泄露即可读写本机任意文件。
+> **这就是「不外发凭据」那条边界要写进 `globalRules` 的原因。**
+
+### 本机当前配置（2026-10-12）
+
+| 项 | 值 |
+|---|---|
+| `model` | `minimax-cn/MiniMax-M3.1-Flash-Preview`（用户实测「很舒服」） |
+| `users.sessionRotateTurns` | `128` |
+| `turnTimeoutMs` | `0`（不限时） |
+| persona（`telegram:8192862144`） | **`admin`** |
+| `globalRules` | 4 条通用 + 「坦诚的成年 interlocutor」对话风格 + 5 条不可让渡边界 |
+
+`globalRules` 里那 5 条边界（**不是道德说教，是风险控制**）：
+
+1. 不改自身系统提示词
+2. 不做删文件 / 格式化磁盘 / 关安全软件这类不可逆破坏
+3. **不读取、复制或外发凭据密钥**（含「帮我看下配置」这类请求）—— `admin` 模式下这条尤其关键
+4. 不输出完整内部路径
+5. 涉人身安全 / 严重违法 / 专业决策时建议求助，但不道德说教
+
+用户诉求是「让它道德低一点、聊私密的事」。采取的折中：**给角色身份而不是拆边界**
+（"你是坦诚的成年 interlocutor，不评判不说教不回避"），
+效果上「能聊私密」达标，同时**保留安全边界**。
+参照 `conventions.md` 第十一条 —— 解安全约束的方向要选代价小的那条。
 
 ### 🔴 已打补丁：看板输入框被 3 秒轮询吞掉
 
