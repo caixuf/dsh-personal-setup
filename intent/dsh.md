@@ -959,13 +959,40 @@ pi-ai 内置目录（`dist/providers/data/minimax-cn.json`，API 走 `anthropic-
 | `MiniMax-M2.7-highspeed` | 204800 | 131072 | text |
 | `MiniMax-M3` | 1048576 | 512000 | text + image |
 
-**🔴 不存在 `MiniMax-M3.1`**：MiniMax 官方「模型发布」页最新是
-**MiniMax M3（2026-06-01）**，无 M3.1；pi-ai 目录也没有。
-曾误配过 `MiniMax-M3.1-Flash-Preview`（ctx/max 照抄 M3），已删除。
-**别再写不存在的模型 id** —— 配了会在选中时报 `model not found`。
+### 🔴 `MiniMax-M3.1-Flash-Preview`：官方有，但**目录里没有**，且普通 Key 调不到
 
-**本机 `cordis.patch.yml` 里 minimax-cn 的 models 段**与上表逐字一致
-（重复声明 pi-ai 已知目录是允许的，用于固定上限与 input 类型）。
+**模型确实存在**（官方「模型介绍」页 `platform.minimax.cn/docs/guides/models-intro`）：
+
+> **`MiniMax-M3.1-Flash-Preview`** — 原生多模态、1M 上下文的 Frontier Coding 模型，
+> 思考深度可调
+>
+> ⚠️ **「暂时仅通过 M Plan 和 MiniMax Code 提供」**
+>
+> M Plan 和 Token Plan 用户的 **M2.5、M2.7 系列模型请求将于【2026年10月19日】
+> 统一路由至 M3.1 Flash Preview**。原模型名称保留作为兼容入口，用户无需修改
+> 模型名称，原有套餐用量权益不受影响。
+
+**所以配置照写，但要清楚两件事**：
+
+1. **它是自定义路由** —— pi-ai 目录里没有，得在 `cordis.patch.yml` 手写
+   `id/contextWindow/maxTokens/input`（规格与 M3 同：1M 上下文、原生多模态）。
+2. **普通 `MINIMAX_CN_API_KEY` 未必调得通** —— 官方限定「仅 M Plan 和 MiniMax Code 提供」。
+   若选中后报鉴权/额度错误，那是**套餐限制，不是配置写错**。要走 M Plan。
+
+### ⚠️ 我在这里犯过一次方法错误，值得记下
+
+我曾断言「M3.1 不存在」，依据是两条"证据"：
+
+| 我当时的依据 | 实际问题 |
+|---|---|
+| pi-ai 目录里没有 | **只能说明目录没收录**，不能说明模型不存在（preview 通道常不进公开目录） |
+| `web_fetch` 官方发布页最新是 M3 | ⚠️ **那个响应被截断了** —— 内容只到 2026-06-01，后面的没拿到，我却没察觉 |
+
+**错在「没拿到完整数据就下结论」**，而且用了一个**只能证伪不能证实**的证据。
+用户一句「真的有的」直接推翻。
+
+**教训**：判定"某能力不存在"需要**能覆盖全集的证据源**（官方完整文档 / 实测调用），
+不能用"某处没有"代替。`conventions.md` 第二节「能实测的结论就别靠推断」的反面案例。
 
 ### ccp（本地 4000 端口的 OpenAI 兼容网关）
 
