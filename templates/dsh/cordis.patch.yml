@@ -84,3 +84,21 @@
     position: bottom-right
     posY: 728
     hidden: true
+
+- id: dsh-sync
+  name: "@weibaohui/dsh-sync"
+  config:
+    sync:
+      repoUrl: "https://github.com/caixuf/dsh-sync.git"
+      branch: main
+      # token 由各机本地填入或走 askpass / credential 服务，切勿直接入库提交明文
+      gitEnabled: true
+      autoSync: true
+      syncOnStartup: true
+      intervalMinutes: 30
+      syncSkills: true
+      syncSettings: true
+      syncPlugins: true
+      skillsStrategy: union
+      settingsStrategy: backup
+      pluginsStrategy: backup
