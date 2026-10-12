@@ -129,8 +129,9 @@
 
 > OMH 原话："OMH **never calls a native tool** from the handler."
 
-**反面案例**：`dsh-mobile`（已卸载）—— 自己起 TLS 服务、要求改防火墙，属越权设计，
-且流程繁琐到用户放弃。
+**反面案例**：`dsh-mobile` —— 自己起 TLS 服务、要求改防火墙，属越权设计，
+且流程繁琐到用户放弃。（⚠️ 文档曾写它「已卸载」，**实为「停用未卸载」**，
+见 `dsh.md` 开头取证表 —— 这正是下一条纪律的由来。）
 
 ### 💡 附带：skill 要写短
 
@@ -140,3 +141,38 @@ OMH 把 142 个 skill 的共性抽到一份 `skill-common-rail.md`，理由是�
 
 **skill 目录每轮都进上下文**。本项目自建 skill 遵循同一原则：
 `evidence-boundary` 正文仅 ~2KB。
+
+## 十、🔴 写「已装 / 已卸载」必须同 commit 附证据
+
+> 来源：2026-10-12 审计。**本仓自己踩的坑，代价很大。**
+
+**事故**：连续 4 个 commit（`971876f` / `c5303fb` / `7b4adae` / `362316d`）
+在 `intent/` 里写了「已装 skill 管理中心」「已补浏览器能力与壁纸」
+「已卸载 skin-center」「dsh-mobile 已完全卸载」，**但只改了仓库文件，
+一次插件操作都没执行**。结果文档与实机长期背离，
+用户自己发现后问「怎么插件和仓库里的都对不上」。
+
+**代价**：不只是「没做」。那些文档里附带的技术结论
+（「skin-center 设置项静默失败」「theme-studio 的 `ensureDarkContrast()` 行为」
+「wallpaper 的 `overlayOpacity` 调法」）**全都建立在没装过的前提上** ——
+**是假的，且被写成了确信的语气**。
+
+### 纪律
+
+**写「已装」/「已卸载」时，必须在同一个 commit 里给出可复现的证据**，至少一条：
+
+| 证据 | 命令 |
+|---|---|
+| 插件确实被加载 | `dsh plugin --profile <name> list` 的输出 |
+| 依赖确实落盘 | `grep <包名> pnpm-lock.yaml`（⚠️ **曾装过再卸也会留痕**，0 命中 = 从没装过） |
+| 操作确实发生 | `.plugin-manager/logs/` 里对应时刻的记录 |
+| 改的确实是机器 | `git show --stat <commit>` —— **只动 `intent/` 和 `templates/` 就是纯文档改动** |
+
+**自检**：`git show --stat HEAD` 若只有 `intent/*.md` 和 `templates/*`，
+**那这次 commit 就没有改过机器**，措辞不能用「已装 / 已卸载」，
+只能用「**计划** / **待验证**」。
+
+> ⚠️ **`templates/` 是目标态，不是实机态。** 把目标态写成已完成态，
+> 是这次事故的**唯一成因**。改模板 ≠ 改机器。
+
+**自动化**：`scripts/audit-dsh-drift.sh` 专查这件事，改完模板或增删插件后跑一次。

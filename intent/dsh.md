@@ -67,13 +67,81 @@ DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经�
 
 ⚠️ 两者都**没有** `dsh-kb-rag` 的「混合检索 + 交叉编码器重排 + 页码级引用」，属降级替代。
 
-## ❌ `dsh-mobile`（手机远程操控）—— **已卸载，新机不要装**
+## 🔴 先读：有一批文档**只改了文档，没改机器**（2026-10-12 审计定性）
+
+**结论：`intent/` 里多条「已装 / 已卸载」是失真的** —— 那些 commit **只动了仓库文件，
+从没在本机执行过对应的插件操作**。
+
+**取证方法**（可复现）：`git show --stat <commit>` 看它到底改了哪些文件。
+下面四条，**改的全部是 `intent/*.md` / `README.md` / `templates/`**：
+
+| commit | 时间 | 声称 | 实际改的文件 |
+|---|---|---|---|
+| `971876f` | 09:19 | dsh-mobile **已完全卸载**（五处无残留） | **只有 `intent/dsh.md`** |
+| `c5303fb` | 10:23 | **装** skill 管理中心 | `intent/dsh.md` + `templates/dsh/package.json` |
+| `7b4adae` | 11:13 | **补**浏览器能力与壁纸 | `README.md` + `intent/` + `templates/` |
+| `362316d` | 14:19 | **卸载** skin-center，改用 theme-studio | `intent/dsh.md` + `templates/dsh/package.json` |
+
+**交叉验证（三条独立证据都指向同一结论）**：
+
+1. **`pnpm-lock.yaml` 无痕迹**：`dsh-theme-studio` / `dsh-wallpaper-bg` /
+   `dsh-browser-cdp` / `skill-explorer` **各 0 命中**；而 `skin-center` / `dsh-mobile`
+   各 3 命中。⚠️ **曾装过再卸掉也会留痕迹**（skin-center 就是），0 命中 = **从没装过**。
+2. **`node_modules/.modules.yaml`**：`skin-center` / `dsh-mobile` 已登记，其余四个**未登记**。
+3. **`.plugin-manager/logs/`**：2026-10-12 全天只有 **18:11 / 19:18 / 19:20** 三次操作记录，
+   **09:19 / 10:23 / 11:13 / 14:19 那四个时间点没有任何插件操作**。
+
+**实测 drift（`scripts/audit-dsh-drift.sh`）**：
+
+| 项 | 模板 | 本机 |
+|---|---|---|
+| `@linxin666/dsh-client-ui-skin-center` | ❌ 已移除 | ⚠️ **仍在且 active** |
+| `dsh-theme-studio` / `dsh-browser-cdp` / `dsh-wallpaper-bg` / `skill-explorer` | ✅ 有 | ❌ **没装** |
+| `@deepseek-ai/dsh-experimental-agent-team-profile` / `voice-input-bundle` | ✅ 有 | ❌ 没装（19:18/19:20 刚启用，见下） |
+| `dsh-mobile` | ❌ 无 | ⚠️ **仍在且 active** |
+| `dsh-bot-gateway` | ✅ 有（仅 `dependencies`） | ✅ 有 |
+
+> ⚠️ **因此那几节文档里的「结论」也不可信** —— 例如「skin-center 设置项静默失败」
+> 「theme-studio 的 `ensureDarkContrast()` 亮度 < 0.18 自动提亮」「wallpaper-bg 的
+> `overlayOpacity` 调法」，**都是在没有实机验证的情况下写下的**（因为压根没装）。
+> 重新启用这些判断前，**必须先在本机真装一次再验**。
+
+> 💡 **「模板有本机无」本身不是错误**：`templates/dsh/` 是**目标基线**，本机跑
+> `apply.sh --dsh` 才会追上。**问题在于文档把「目标态」写成了「已完成态」。**
+
+**跑一次就知道差多少**：
+
+```bash
+bash scripts/audit-dsh-drift.sh --profile "/mnt/c/Users/<你>/.dsh/profiles/desktop"
+```
+
+### 🔴 `dsh-mobile` 真实状态：**停用但没卸载**（本节标题曾写「已卸载」）
+
+审计实测：本机 `dsh plugin --profile desktop list` 仍列出 **`dsh-mobile@0.6.3`** 且 active；
+`package.json` 的 `dependencies` 与 `bundles` 均含它；`~/.dsh/mobile-access/` 仍在。
+
+**没有安全暴露**：端口 3443 **未监听**、`control.json` 为 `enabled: false`、局域网未开
+（2026-10-12 回滚时确认）。
+
+即：**它是「停用未卸载」**。此前文档写「已完全卸载、五处无残留」是**另一台机器
+（或另一时间点）的状态，本机不成立**。卸不卸由用户定 ——
+**真要卸干净需删三处**：`package.json` 的 `dependencies` + `bundles`、
+`node_modules/dsh-mobile/`、`~/.dsh/mobile-access/`（然后重启 DSH）。
+
+## ❌ `dsh-mobile`（手机远程操控）—— 已停用，新机不要装
 
 **版本**：曾装插件 `0.6.3`（npm `dsh-mobile`）+ Android App `0.6.2`（要求 Android 10+）。
 
-**状态（2026-10-12 复核）**：插件**已完全卸载** —— `package.json`、`bundles`、
-`pnpm-lock.yaml`、`node_modules`、`cordis.patch.yml` **五处均无残留**。
-`~/.dsh/mobile-access/` 目录已删除，端口 3443 **未监听**，局域网**未暴露**。
+**状态（2026-10-12 复核，本机）**：插件**停用但未卸载** —— `package.json` 的
+`dependencies` 与 `bundles` 仍有它、`node_modules/dsh-mobile/` 仍在、插件仍 active；
+`~/.dsh/mobile-access/` 目录仍在。端口 3443 **未监听**、局域网**未暴露**（已回滚）。
+
+⚠️ **`971876f`（09:19）声称「已完全卸载、五处无残留」是失真的** ——
+`git show --stat 971876f` 显示它**只改了 `intent/dsh.md` 一个文件**，
+当天 `.plugin-manager/logs/` 在该时刻**没有任何操作记录**。
+**本机从未执行过卸载**，四类证据都在（见本文开头那张取证表）。
+
+**判断依据只有一条**：跑 `dsh plugin --profile <name> list` 看它是否还被列出。
 
 > 下文保留完整踩坑记录，供**将来官方修好后**重装时参考，避免重走一遍。
 

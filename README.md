@@ -32,9 +32,18 @@ forks/                  ← 【例外】本机 fork 的第三方源码（仅源�
   dsh-wsl-workspace/    WSL 用户级 skill 补丁（基线 0.7.5）；说明见其 README.fork.md
 scripts/
   audit.sh              盘点**当前机**实际状态，供 AI 与新机对比
+  audit-dsh-drift.sh    ★ 审计「仓库模板 vs 本机实机」的 DSH 配置 drift
   apply.sh              幂等落地（默认 --check 只读；--dsh 落 DSH profile）
   check-secrets.sh      提交前密钥扫描（⚠️ 手动跑，无 CI 强制）
 ```
+
+> 🔍 **`audit-dsh-drift.sh` 是防「文档与实机脱节」的常规武器。**
+> 本仓已两次出现「文档写的插件实机没有 / 实机有的文档没记」（见 `intent/dsh.md`
+> 开头那张 drift 表）。改完模板或本机增删插件后跑一次：
+> ```bash
+> bash scripts/audit-dsh-drift.sh --profile "/mnt/c/Users/<你>/.dsh/profiles/desktop"
+> ```
+> 它报「本机有模板无 / 模板有本机无 / 模板残留 `link:` 机器路径 / 机器级 patch 是否入库」。
 
 ## AI 配置新机的流程
 
