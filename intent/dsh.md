@@ -22,7 +22,7 @@ DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经�
 | `@deepseek-ai/dsh-web-app` | Web 界面层 | 必需 |
 | `dsh-our-free-model` | 免费模型接入 | ✅ 用 **npm 版**（`dsh-our-free-model@^2.1.0`）；本机已于 2026-10-12 从旧机 `file:` tgz 切到 npm |
 | `dsh-wsl-tool` | WSL 命令/路径/环境工具 | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor` |
-| `dsh-wsl-workspace` | 会话执行环境落地 WSL | **官方 0.7.5**。fork 试装后回滚，见「WSL 用户级 skill fork」 |
+| `dsh-wsl-workspace` | 会话执行环境落地 WSL | **本地 fork，基线 0.7.5** —— WSL 用户级 skill 可见（61 个）。见「WSL 用户级 skill fork」 |
 | `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | |
 | `dsh-whale-girl-pet` | 鲸鱼娘桌宠 | ⚠️ 见下方「桌宠脆弱性」。**独立插件，不依赖皮肤中心** |
 | `dsh-theme-studio` | 主题/配色 | 12 预设 + 深色对比度守护（亮度 < 0.18 自动提亮）。见「外观插件教训」 |
@@ -161,8 +161,8 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 
 ## WSL 用户级 skill fork（2026-10-12）
 
-> **状态：❌ 已回滚到官方 0.7.5。** fork 代码保留但**未装入**。
-> 原因见「❌ 致命坑：0.7.5 → 0.7.7 不是补丁升级」。重做请直接看该节。
+> **状态：✅ 已装入并生效**（基线 `v0.7.5`，提交 `f1f30d2`）。
+> 第一次基于 0.7.7 的尝试炸了并回滚，真因见下方「❌ 致命坑」。**重做方法：fork 0.7.5。**
 
 ### 问题
 
@@ -178,7 +178,7 @@ WSL 里有 **61 个 skill**，但 DSH 开 WSL 会话时**只加载 5 个**（4 �
 
 ### 改动
 
-仓库 `~/code/dsh-wsl-workspace`，分支 `feat/wsl-user-level-skills`，提交 `aa007c2`：
+仓库 `~/code/dsh-wsl-workspace`，**分支 `feat/wsl-user-skills-075`（基线 v0.7.5 = 97f0e82）**，提交 `f1f30d2`：
 
 | 项 | 内容 |
 |---|---|
@@ -217,19 +217,45 @@ Unknown agent preset: wsl-standard (gateway/internal)
 
 ⚠️ **这正是「能跑的配置别动」那条铁律要防的事**：小版本号 +N 不代表兼容。
 
-### ✅ 重做方法：**fork 0.7.5，不要 fork 0.7.7**
+### ✅ 当前安装形态
 
-保持基线与现役版本一致，只叠加 skill 扫描改动：
-
-```bash
-cd ~/code/dsh-wsl-workspace
-git checkout -b feat/wsl-user-level-skills-075 v0.7.5   # 基线锁 0.7.5
-# 只移植 src/host/wsl-skills.ts 的那 176 行 + 对应测试
-npm install && npm run build     # 重新生成 lib/（S4：lib 必须与 src 一致）
+```
+node_modules\dsh-wsl-workspace ──junction──> C:\Users\20247\Downloads\minimax_work\dsh-wsl-workspace-fork
+package.json: "dsh-wsl-workspace": "link:C:/Users/20247/Downloads/minimax_work/dsh-wsl-workspace-fork"
+版本 0.7.5   variantGeneration = 0   discoverUserSkillRoots = 2 处
 ```
 
-装之前**必须**验证：`plugin_manager` 报 `applied`/`restart-required` 之后重启，
-**开一个全新 WSL 会话**（不要只 resume 旧会话），确认 preset 正常。
+WSL 侧 `~/code/dsh-wsl-workspace`（分支 `feat/wsl-user-skills-075`）是 git 源，
+`minimax_work\dsh-wsl-workspace-fork` 是**运行副本** —— 改代码要两边同步：
+
+```bash
+# 1. 在 WSL 源仓改 src/
+cd ~/code/dsh-wsl-workspace
+# 2. 编译（必须 node >=24，0.7.5 的 engines 要求）
+export PATH=$HOME/.n/bin:$PATH && node -v    # 需 v24
+npm run build                                  # 末尾须打印 verify-lib OK
+# 3. 同步到运行副本
+tar --exclude=node_modules --exclude=.git -cf - . \
+  | tar -C /mnt/c/Users/20247/Downloads/minimax_work/dsh-wsl-workspace-fork -xf -
+# 4. 哨兵复核（见下）
+```
+
+### 🚨 装之前必查的哨兵
+
+```bash
+grep -c variantGeneration lib/index.js    # 必须输出 0
+```
+
+`variantGeneration` 是 **0.7.7 preset 派生机制的标志**，非 0 就是炸弹 ——
+上一次整台 DSH 的 WSL 会话全挂就是它。
+
+⚠️ **cherry-pick 时 `lib/` 会冲突**，如果图省事用 `--theirs`，会把 **0.7.7 的编译产物**
+一起带进来（炸弹就是这么进的）。**正确做法**：
+
+```bash
+git checkout v0.7.5 -- lib/     # 先回到纯净基线
+npm run build                   # 再重新编译（勿手工解冲突）
+```
 
 ### 安装路径的三个坑（都踩过）
 
@@ -242,17 +268,26 @@ npm install && npm run build     # 重新生成 lib/（S4：lib 必须与 src �
 ⚠️ 前两次失败**中途把能用的官方版卸掉了**（`Packages: -1`），且留下坏 junction。
 **教训：每次 `install_bundle` 后先查状态再动下一步**，别连续试。
 
-### 回滚方式（本次已验证有效）
+### 回滚方式（第一次回滚已验证有效）
 
 ```bash
 # 1. package.json 里把 "link:..." 改回 "^0.7.5"
-# 2. 删 junction（只删链接，别动目标目录）
+# 2. 删 junction（只删链接，别动目标目录里的真实文件）
 # 3. plugin_manager install dsh-wsl-workspace
 # 4. 重启 DSH
 ```
 
-⚠️ 备份：`_profile-desktop-backup-20261012-142340-before-wsl-fork/`（`cordis.patch.yml`、`package.json`）
-fork 源码仍在 `~/code/dsh-wsl-workspace` 与 `minimax_work\dsh-wsl-workspace-fork`，**没丢**。
+⚠️ 备份：`_profile-desktop-backup-20261012-143715-before-fork-075/`（`cordis.patch.yml`、`package.json`）
+
+### 测试注意（两个坑，都会误导判断）
+
+1. **用 `node --test`，不是 vitest。**
+   `tests/wsl-skills.test.ts` 头部写明跑 `node --test`（Node >= 23.6 直接剥类型）。
+   误用 `npx vitest run` 会报 **`No test suite found`** —— 看着像文件坏了，其实只是 runner 不对。
+
+2. **Linux 下 34/36，那 2 个失败与改动无关。**
+   失败项是路径分隔符差异：Linux 走 `posix.join` 产出 `/`，Windows 走 `path.join` 产出 `\`。
+   **真实部署环境是 Windows，以 Windows 结果为准：36/36 全过。**
 
 ### 别做过的无用功
 
@@ -262,8 +297,11 @@ fork 源码仍在 `~/code/dsh-wsl-workspace` 与 `minimax_work\dsh-wsl-workspace
 `js-yaml` 只是 `src/` 的 dev 依赖，编译后已内联，`lib/` 里根本 import 不到它。
 
 **也不要**只凭 `fiberPhase: active` + `application: restart-required` 就宣布装好了 ——
-本次正是这两个信号全绿、测试 36/36、端到端 61 skill 全对，**运行时却整个 WSL 打不开**。
-`restart-required` 的含义是**还没生效**，此时任何"装好了"的说法都是提前下结论。
+第一次正是这两个信号全绿、测试全对、端到端 61 skill 全对，**运行时却整个 WSL 打不开**。
+`restart-required` 的含义是**还没生效**，此时说"装好了"就是提前下结论。
+
+**更不要**在 `install_bundle` 失败后直接试下一条路径 —— 失败会**中途卸掉能用的包**
+（`Packages: -1`）并留下坏 junction。**每次操作后先查状态。**
 
 ## ⚠️ 外观插件教训：`skin-center` 已卸载（2026-10-12）
 
