@@ -18,6 +18,8 @@ intent/                 ← 【为什么】人可读的意图。AI 的核心决�
   services.md           本地服务：litellm / privoxy 端口分配与用途
   packages.md           软件包清单：apt / npm / pip 分组与用途
   secrets.md            【只有变量名，没有值】密钥清单与获取方式
+  remote-选型.md        ★ 手机远程方案选型：20+ 候选的 peer 兼容性对照表
+  dsh-sync-配置清单.md  多机同步（dsh-sync）首次配置步骤与跨机顺序
   ecosystem.md          生态调研结论（哪些插件是什么、值不值得装、调研方法）
                         含**浏览器能力**与**壁纸**的选型与实测结果
 templates/              ← 【是什么】可直接复制、不含密钥
