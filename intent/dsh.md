@@ -24,8 +24,8 @@ DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经�
 | `dsh-wsl-tool` | WSL 命令/路径/环境工具 | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor` |
 | `dsh-wsl-workspace` | 会话执行环境落地 WSL | 兼容 `0.2.0-rc.2` 已声明 |
 | `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | |
-| `dsh-whale-girl-pet` | 鲸鱼娘桌宠 | ⚠️ 见下方「桌宠脆弱性」 |
-| `@linxin666/dsh-client-ui-skin-center` | 皮肤中心 | 提供 `blue-fantasy` 鲸鱼娘皮肤 |
+| `dsh-whale-girl-pet` | 鲸鱼娘桌宠 | ⚠️ 见下方「桌宠脆弱性」。**独立插件，不依赖皮肤中心** |
+| `dsh-theme-studio` | 主题/配色 | 12 预设 + 深色对比度守护（亮度 < 0.18 自动提亮）。见「外观插件教训」 |
 | `dsh-terminal-panel` | 主栏全尺寸终端 | 最多 12 标签，刷新回放 256KB |
 | `@anionex/dsh-eye-care` | 暖色护眼主题 | 明暗双套，不劫持 Appearance |
 | `@weibaohui/dsh-sync` | 多机同步/备份 | Git + WebDAV + 本地文件夹三协议 |
@@ -137,14 +137,19 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 
 来自多轮交互确认，**不要**改成别的：
 
-1. **鲸鱼娘外观由 skin-center 的 `blue-fantasy` 皮肤提供**，不用 `dsh-theme-whalegirl`
+1. **桌宠本体 `dsh-whale-girl-pet` 是独立插件**（不依赖任何皮肤系统）。
+   ⚠️ 2026-10-12 已卸载 `skin-center`，`blue-fantasy` 皮肤随之消失，**这是可接受的**
+   —— 用户明确说「不需要花哨皮肤」。若将来要恢复皮肤，**不要**用 `skin-center`
+   （见「外观插件教训」），优先 `dsh-theme-gallery`（3,709/月）。
 2. `ui-theme.preference` 应为 **`dark`**
-   ⚠️ 曾误改成 `light`（记错了「GUI 里选的是 light」）—— 那条其实正是下面
-   「配置写入方冲突」记载的**皮肤中心回写**现象。已按本文件改回 `dark`。
-   **明暗以本文件为准，去「设置 → 皮肤中心」改。**
-3. 皮肤中心的**背景遮挡 `backgroundOpacity`** 由用户自行调节（0 = 壁纸全裸，用户嫌遮挡视线）。
-   **不要写死具体数值** —— 实测用户会在 15~72 之间自行调整，见 `~/.dsh/skin-center-active.json`。
+   ⚠️ 曾误改成 `light`（记错了「GUI 里选的是 light」）—— 已按本文件改回 `dark`。
+   **明暗以本文件为准。**
+3. **背景遮挡由用户自行调节，AI 不要写死数值**：
+   - 现在归 `dsh-wallpaper-bg` 管：`overlayOpacity`（默认 40）、`lightFog`（默认 55）
+   - 用户按壁纸深浅自己拉到看得清为止
+   - ⚠️ 别开壁纸插件的「原生背景」开关 —— 开了雾层就没了
 4. eye-care 当前 `mode: off`，但保留（用户可自行启用暖色）
+5. **用户原话**：「不需要花哨，能换壁纸就很舒服了」—— 别给ta塞一整套皮肤系统
 
 ### ⚠️ 已排除的插件（不要再装）
 
@@ -153,6 +158,35 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 | `dsh-theme-whalegirl` | **独占式**：`colorScheme` 只有 light 一套 + 监听 `theme/change` 无条件回弹。导致暗色看不清、切换被劫持。**已卸载** |
 | `dsh-plugin-ops-bundle` | 37 条警告全属误报（见下）。**已卸载** |
 | `@linxin666/dsh-web-all` | 内含 skin-center，**与已装的重复挂载**会报错 |
+
+## ⚠️ 外观插件教训：`skin-center` 已卸载（2026-10-12）
+
+用户诉求是「**不同壁纸下字体可见度不同**」。折腾一圈的结论：
+
+| 插件 | 为什么不行 |
+|---|---|
+| `@linxin666/dsh-client-ui-skin-center` | ❌ **已卸载**。设置项走 locale 本地化，中文界面找不到；注册处包了 `catch { return () => {} }` **静默失败**；且它是「皮肤系统」，与壁纸叠加反而更乱 |
+| `dsh-theme-studio` | ✅ 当前采用。`ensureDarkContrast()` 在亮度 < 0.18 时自动提亮 |
+
+**但要说清楚 theme-studio 也解决不了全部**：
+
+- 它守的是**强调色**（按钮、选中态），**不是正文文字**
+- 代码注释写明 *"never touches the DOM"*，只调 `ctx.theme.overrideTokens`
+- `customCss` 的 `parseCustomCss()` **只接受 `--dsw-*` token 赋值**，塞 `text-shadow` 会被拒
+- 它的对比度守护有**不对称 bug**（`apply.js` `resolveAccentPair`）：**只护深色，浅色裸奔**
+
+**所以「壁纸全开 + 字全清楚」目前只能靠调 `dsh-wallpaper-bg` 的雾层**
+（`overlayOpacity` 40→65~75、`lightFog` 55→75~85），这是插件自带正规设置，零改动。
+
+**行业标准解法是 `text-shadow`**（Instagram/微信/B站 都用），但**本机没有零成本注入口**：
+`cordis.yml` 无自定义 CSS 插件入口，`cordis-client-runner`/`client-hmr` 是新增机制。
+真要做必须 fork 或写客户端模块 —— 属于改动宿主，**未做，谨慎评估后再做**。
+
+### 卸载 skin-center 的副作用（已验证无害）
+
+- **桌宠不受影响**：`dsh-whale-girl-pet` 是独立插件，`blue-fantasy` 皮肤目录随卸载移除，但桌宠本体 70/70 完好
+- `~/.dsh/skin-center-active.json` 残留但 `active: null`，**无人读取，留着无害**
+- 卸载后 `cordis.patch.yml` 的 `ui-skin-center` 块**需手动删**（`plugin_manager` 不清），已删并验证 YAML 可解析
 
 ## 安装步骤
 
@@ -428,13 +462,14 @@ cd "$USERPROFILE/.dsh/profiles/desktop"
 `cordis.patch.yml` 存在**多个写入方**：
 
 1. `plugin_manager` — 启停插件时
-2. `@linxin666/dsh-client-ui-skin-center` 的 `legacy-bridge` — ⚠️ **会重写整个 YAML 并丢弃注释**
-   （`lib/index.js:3383` 正则命中 `name: "@linxin666/dsh-client-ui-skin-..."` 即触发）
+2. ~~`@linxin666/dsh-client-ui-skin-center` 的 `legacy-bridge`~~ — ✅ **2026-10-12 已卸载，此风险解除**
+   （曾会重写整个 YAML 并丢弃注释：`lib/index.js:3383` 正则命中
+   `name: "@linxin666/dsh-client-ui-skin-..."` 即触发）
 3. `dsh-config-editor` — 设置页保存时（保留注释）
+4. `dsh-theme-studio` — 通过 `ctx.theme.overrideTokens` 覆盖 token，**不改 YAML**
 
-**用户层表现**：在「设置 → 通用 → 外观」改了明暗，会被皮肤中心覆盖。
-
-**正确做法**：**改明暗去「设置 → 皮肤中心」改**，不要只改通用设置。
+**现在的正确做法**：改明暗去「**设置 → 通用 → 外观**」，或用 `dsh-theme-studio` 的主题面板。
+⚠️ **不要再引用「皮肤中心」那个入口 —— 插件已卸载，点了没用。**
 
 ## Skill 加载机制（2026-10-12 实测）
 
@@ -594,7 +629,7 @@ tabbit                         磁盘（~/.agents/skills）
 |---|---|---|
 | `~/.dsh/profiles/desktop/{package.json,cordis.patch.yml,pnpm-lock.yaml}` | 插件配置 | ✅ 小且关键 |
 | `~/.dsh/profiles/desktop/node_modules/` | 依赖产物 100.8 MB | ❌ **不要复制**，重建 |
-| `~/.dsh/skin-center-active.json` | 皮肤选择 | ✅ 260 字节 |
+| `~/.dsh/skin-center-active.json` | ~~皮肤选择~~ | ⚪ **已失效**，插件卸载后无人读取，可不迁移 |
 | `~/.dsh/.credentials.yaml` | 密钥 19 条 | ❌ 见 `secrets.md` |
 | `~/.dsh/sessions/` | 会话记录 11 MB | 可选 |
 | `C:\Users\<user>\dsh-plugin-packages\*.tgz` | free-model 的旧机私存副本 | ⚠️ 不在 `~/.dsh` 内、本仓库也不含；**新机不必带它，改用 npm 版** |

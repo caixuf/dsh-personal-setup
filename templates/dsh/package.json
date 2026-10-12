@@ -4,12 +4,12 @@
   "dependencies": {
     "@anionex/dsh-eye-care": "^0.1.2",
     "@linxin666/dsh-client-ui-skill-explorer": "^0.4.6",
-    "@linxin666/dsh-client-ui-skin-center": "^0.4.5",
     "@weibaohui/dsh-sync": "^0.4.8",
     "dsh-browser-cdp": "^0.18.19",
     "dsh-mnemon": "^0.5.25",
     "dsh-our-free-model": "^2.1.0",
     "dsh-terminal-panel": "^1.0.1",
+    "dsh-theme-studio": "^0.6.3",
     "dsh-wallpaper-bg": "^0.5.12",
     "dsh-whale-girl-pet": "^0.3.9",
     "dsh-wsl-tool": "^1.11.0",
@@ -25,7 +25,6 @@
         "dsh-wsl-tool",
         "dsh-wsl-workspace",
         "dsh-wsl-workspace-picker",
-        "@linxin666/dsh-client-ui-skin-center",
         "dsh-terminal-panel",
         "@anionex/dsh-eye-care",
         "@weibaohui/dsh-sync",
@@ -35,7 +34,8 @@
         "@deepseek-ai/dsh-experimental-agent-team-profile",
         "@deepseek-ai/dsh-experimental-voice-input-bundle",
         "dsh-browser-cdp",
-        "dsh-wallpaper-bg"
+        "dsh-wallpaper-bg",
+        "dsh-theme-studio"
       ]
     }
   }
