@@ -897,6 +897,88 @@ cd "$USERPROFILE/.dsh/profiles/desktop"
 **🔴 绝对不要做的**：包已落盘但清单没写时，对**已加载的桌宠**跑普通 `pnpm install`
 —— 那正是把它打成残缺态的操作。桌宠坏了就走上方的「已验证复原流程」（需先重启 DSH）。
 
+## ⚠️ pnpm 在本机的三个坑（2026-10-12 实测，都踩过）
+
+### 1. `remove_bundle` 被 `minimumReleaseAge` 拦住 —— exclude 列表对它无效
+
+pnpm 11 默认 `minimumReleaseAge: 1440`（24h），装/卸都会触发。
+`pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` **只在「安装新版本」时生效**，
+**对 lockfile 校验（verify）阶段无效** —— 于是出现这种荒谬局面：
+exclude 里明明有 `dsh-our-free-model@2.1.0`，`remove_bundle` 仍报
+`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`。
+
+**解法**：在 `pnpm-workspace.yaml` 显式关掉策略（本机已设）：
+
+```yaml
+minimumReleaseAge: 0
+```
+
+> 副作用：之后装任何包都不再拦「太新」的版本。供应链防护对本机是**主动关闭**的，
+> 换来的是能正常增删插件。**这是取舍，不是配置正确。**
+
+### 2. `pnpm add` 可能「打印 `+N` 但不落盘、也不写 package.json」
+
+症状：输出 `dependencies: + @deepseek-ai/dsh-llm-pi-ai 0.2.0-rc.2`，
+但 `node_modules/<包>` 不存在、`package.json` 无该条目；
+之后再 `install` / `add` 一律回 `Already up to date`（因为 lockfile 认为已完成）。
+
+**解法**：先从 `package.json` **移除**该依赖，再 `pnpm add` —— 实测这样就真落盘了。
+
+**判定**：`pnpm list` 会显示它（**别信这个**，它读 lockfile）；要看**磁盘**：
+`ls node_modules/<包>` 与 `grep '<包名>' pnpm-lock.yaml`。
+
+### 3. 本机 `nodeLinker: hoisted`，`.pnpm/` 目录是空的
+
+所以**不要用「`.pnpm/` 下有没有」判断安装成功** —— 包直接平铺在
+`node_modules/<包名>/`。反过来，**卸载后 `node_modules/<包名>/` 消失才是真卸掉了**。
+
+## `@deepseek-ai/dsh-llm-pi-ai`（minimax / ccp 等第三方 provider）
+
+**版本**：`0.2.0-rc.2`，peer **精确匹配** DSH `0.2.0-rc.2`（`cordis: ~4.0.4`、`dsh-llm: 0.2.0-rc.2` 等）。
+
+它**不是 bundle**（无 `dsh.bundle.patch`），所以 `plugin_manager install_bundle` 会报
+`cannot resolve profile bundle`；**它只进 `dependencies`，不进 `bundles`**，
+靠 `cordis.patch.yml` 的 `- id: llm-pi-ai` 那一行挂载。
+
+> ⚠️ **2026-10-12 之前本机 patch 里就有这行，但包根本没装** ——
+> 于是 `minimax-cn` / `ccp` 两个 provider 一直是**死配置**（写了不生效）。
+> 教训同「只改文档没改机器」：patch 里引用一个没装的包，配置不会报错，只会**静默无效**。
+> 判定方法：`grep '<包名>' pnpm-lock.yaml` —— 0 命中 = 从没装过。
+
+### minimax-cn 的模型清单（2026-10-12 核实）
+
+provider 由 **`@earendil-works/pi-ai`** 提供，它**内置**这两个路由名：
+`minimax`（国际站，`MINIMAX_API_KEY`）与 `minimax-cn`（**中国站**，`MINIMAX_CN_API_KEY`）。
+
+pi-ai 内置目录（`dist/providers/data/minimax-cn.json`，API 走 `anthropic-messages`，
+`baseUrl: https://api.minimaxi.com/anthropic`）只有**三个**模型：
+
+| 模型 id | contextWindow | maxTokens | input |
+|---|---|---|---|
+| `MiniMax-M2.7` | 204800 | 131072 | text |
+| `MiniMax-M2.7-highspeed` | 204800 | 131072 | text |
+| `MiniMax-M3` | 1048576 | 512000 | text + image |
+
+**🔴 不存在 `MiniMax-M3.1`**：MiniMax 官方「模型发布」页最新是
+**MiniMax M3（2026-06-01）**，无 M3.1；pi-ai 目录也没有。
+曾误配过 `MiniMax-M3.1-Flash-Preview`（ctx/max 照抄 M3），已删除。
+**别再写不存在的模型 id** —— 配了会在选中时报 `model not found`。
+
+**本机 `cordis.patch.yml` 里 minimax-cn 的 models 段**与上表逐字一致
+（重复声明 pi-ai 已知目录是允许的，用于固定上限与 input 类型）。
+
+### ccp（本地 4000 端口的 OpenAI 兼容网关）
+
+```yaml
+ccp:
+  apiKeyEnv: CCP_API_KEY
+  api: openai-completions
+  baseURL: http://127.0.0.1:4000/v1
+```
+
+⚠️ `baseURL` **不要写成 `" http://..."`**（前面多一个空格）——
+YAML 里带前导空格的标量仍会被当字符串传下去，表现为连不通。
+
 ## ⚠️ 关于 `plugin_manager` 报的 37 条 peer-gap 警告
 
 **它们全是误报，忽略即可**（该诊断插件已卸载，此处仅存档结论）。
