@@ -5,8 +5,9 @@
 DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经验证 `fiberPhase: active`。
 （曾装过 `dsh-mobile`，因 CLI 损坏 + 流程繁琐**已卸载**，踩坑记录见下方「dsh-mobile」一节 —— 新机**不要装**。）
 
-另有 1 个**宿主插件** `dsh-bot-gateway`，**不挂在 profile 而挂机器级 patch**
-（`~/.dsh/cordis.patch.yml`），见其专节 —— 换机时别漏了这一处。
+手机远程入口用 **`deepseek-harness-weixin`**（微信 iLink 官方通道，正常 bundle）。
+曾装的社区包 `dsh-bot-gateway` **已卸载**（它会在 WSL 里自动建 108 MB 的 NapCat 发行版）——
+机制不同（宿主插件要挂机器级 patch），记录见其专节。
 
 ## 约束（AI 必读）
 
@@ -100,6 +101,9 @@ DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经�
 | `@deepseek-ai/dsh-experimental-agent-team-profile` / `voice-input-bundle` | ✅ 有 | ❌ 没装（19:18/19:20 刚启用，见下） |
 | `dsh-mobile` | ❌ 无 | ⚠️ **仍在且 active** |
 | `dsh-bot-gateway` | ✅ 有（仅 `dependencies`） | ✅ 有 |
+
+> ℹ️ 上表是 **20:11 修复前**的快照。`dsh-bot-gateway` 那行后来也变了：
+> **已卸载**，换成 `deepseek-harness-weixin`（见其专节）。
 
 > ⚠️ **因此那几节文档里的「结论」也不可信** —— 例如「skin-center 设置项静默失败」
 > 「theme-studio 的 `ensureDarkContrast()` 亮度 < 0.18 自动提亮」「wallpaper-bg 的
@@ -236,11 +240,86 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 但 `adb devices` 是空的 —— 别以为没连上。**realme/OPPO 的 VID 是 `22D9`**：
 `PID_2764` = 纯 MTP，`PID_2765` = MTP + ADB。
 
-## ✅ `dsh-bot-gateway`（聊天软件当远程入口）—— 已装
+## ✅ `deepseek-harness-weixin`（微信 iLink 私人通道）—— 已装
 
-**用途**：把 QQ（NapCat OneBot v11 / 官方机器人）/ Telegram / 飞书 / 钉钉 接成 DSH 的
-**远程任务网关**。手机聊天里发条消息就能建任务、续聊、查进度、收交付物 ——
-**这正是 `dsh-mobile` 没做成的事的另一条路**（见上一节）。
+**这是「DeepSeek Bot」的正牌**：把 DSH 塞进**微信**，手机聊天即操控电脑。
+用户在手机聊天软件里发消息就能建任务、续聊、查进度、收交付物 ——
+**这是 `dsh-mobile` 没做成的那件事的另一条路**（见上一节）。
+
+**包**：`deepseek-harness-weixin@0.2.5`，MIT，**正常 bundle**（有 `dsh.bundle.patch`，
+`dsh add` 一次搞定，**不需要机器级那一套**）。peer `>=0.1.0-rc.7` 覆盖我们的 `0.2.0-rc.2` ✅
+
+### 为什么选它而不是 `dsh-bot-gateway`
+
+| | `deepseek-harness-weixin`（现用） | `dsh-bot-gateway`（已卸） |
+|---|---|---|
+| 通道 | **微信 iLink 官方** | QQ(NapCat) / Telegram / 飞书 / 钉钉 |
+| 凭证 | **二维码登录**，不要 AppID/AppSecret | 各平台自建应用凭证 |
+| 形态 | **正常 bundle** | 宿主插件（需机器级 patch + node_modules 副本） |
+| 副作用 | 无 | ⚠️ 装它会自动在 WSL 建 NapCat 发行版（**108 MB** `ext4.vhdx`） |
+| 维护 | 协议跟随官方 | 依赖第三方 QQ 生态 |
+
+> 🔴 **别把 `deepseek-harness-*` 当成官方包** —— 它们**无 scope**（长得像官方），
+> 但作者是 **`sliverp`**（个人），仓库 `github.com/sliverp/DeepSeek-harness-*`。
+> 真官方包全是 `@deepseek-ai/` scope，仓库在 `deepseek-ai/deepseek-harness`。
+>
+> 同族还有：`deepseek-harness-qqbot`（QQ 官方机器人）、`-lark`（飞书）、
+> `-dingtalk`（钉钉 Stream，**无需公网 IP**）、`-wecom`（企业微信）。
+> 五个都是 bundle，peer 相同，按需换装即可。
+
+### 前提：微信里要有官方「ClawBot」插件
+
+**这不是缺 key、也没有单独的 key 申请页面** —— 你的微信账号必须先出现
+「微信 → 我 → 设置 → 插件 → ClawBot」。若没有这个入口，**通道建不起来**。
+
+### 登录
+
+- **Web 端**（本机走这条）：DSH Web 里保留 `/weixin-login` 辅助入口
+- **命令行走 URL 模式**（免扫码，适配远程/无头机）：
+
+```sh
+dsh plugin --profile desktop exec dsh-weixin login --url --wait
+```
+
+- 换手机时**重新扫码即可**（登录态在 Harness 凭据服务，不进插件配置）
+
+### 能力
+
+每个微信用户 = 一个**独立持久 session**；Agent preset 生命周期、仓库记忆、
+工具执行与 Web live session 完全复用。支持公司白名单/禁用策略/有界并发、
+刷屏抑制、重试、幂等与完整清理；收发**图片与文件**（经微信 CDN 加密上传），
+图片默认另存附件并降级为文字说明。内置 `/bot-ping` `/bot-help` `/bot-status`
+`/bot-cancel` 等；`/new` `/reset` 建新 session；**长按消息可批准工具执行**
+（同会话发 `/approve <短码>` 或 `/reject <短码>`）。
+
+⚠️ **ClawBot/iLink 网关目前仅支持私聊**。
+
+### 验证
+
+```bash
+# 插件状态（fiberPhase 必须 active；null = 还没加载，需重启 DSH）
+dsh plugin --profile desktop list | grep weixin
+```
+
+> ⚠️ **`install_bundle` 报 `build-blocked` 不代表失败** —— 包会落盘，但
+> `package.json` / `bundles` 可能没登记，需手工补 + `pnpm install`。
+> 被拦的 `@google/genai` / `protobufjs` **不是本插件的依赖**（它只要
+> `dsh-credentials-local` / `schemastery` / `qrcode-terminal`），不影响功能。
+> 见下方「pnpm 在本机的三个坑」。
+
+## ❌ `dsh-bot-gateway`（聊天软件当远程入口）—— **已卸载**
+
+> 保留此节供将来参考：它是**宿主插件**，机制与上面那个完全不同。
+> 若将来要装宿主插件（无 `dsh.bundle.patch`、只有 `dsh.client` 的那种），
+> **两件事缺一不可**，且模板在 `templates/dsh/cordis.machine-patch.yml`：
+
+### 🔴 挂载必须用**机器级** patch（换机必读）
+
+这是本插件**最关键**、也最容易做错的一点。README 原文警告：
+
+> 插件由组合树的**一行**组成（在 **`<dsh-home>\cordis.patch.yml` 机器级补丁层** ——
+> 注意**不是** `profiles\<name>\cordis.patch.yml`：DSH Desktop 桌面壳在后端启动失败时会把
+> 整个 `profiles` 目录隔离为 `profiles.broken-<时间戳>` 并重建，**profile 级补丁会随之丢失**；
 
 **包**：`dsh-bot-gateway@0.3.9-beta`，MIT，**零运行时依赖、零 peer**（不会撞 DSH 的窄 peer 窗口）。
 
@@ -1263,9 +1342,8 @@ tabbit                         磁盘（~/.agents/skills）
 | `~/.dsh/profiles/desktop/{package.json,cordis.patch.yml,pnpm-lock.yaml}` | 插件配置 | ✅ 小且关键 |
 | `~/.dsh/profiles/desktop/node_modules/` | 依赖产物 100.8 MB | ❌ **不要复制**，重建 |
 | `~/.dsh/skin-center-active.json` | ~~皮肤选择~~ | ⚪ **已失效**，插件卸载后无人读取，可不迁移 |
-| `~/.dsh/cordis.patch.yml` | **机器级**补丁层：`bot-gateway` 那一行 | ✅ 必须迁移 —— 见 `dsh-bot-gateway` 专节（profile 级 patch 会被 DSH 的 `profiles.broken-<ts>` 隔离丢掉） |
-| `~/.dsh/node_modules/dsh-bot-gateway/` | 该插件的**机器级**副本（浏览器半边按此路径解析） | ❌ 重建：装包后复制一份即可 |
-| `~/.dsh/bot-gateway/` | 该插件的运行时数据 + `boot.log` 启动自检 | ❌ 不迁移 |
+| `~/.dsh/cordis.patch.yml` | **机器级**补丁层 | ⚪ **当前只有注释**（`dsh-bot-gateway` 已卸）。⚠️ 装宿主插件时**必须**用它 —— profile 级 patch 会被 DSH 的 `profiles.broken-<ts>` 隔离丢掉；模板见 `templates/dsh/cordis.machine-patch.yml` |
+| `~/.dsh/node_modules/` | 机器级包副本（仅宿主插件需要） | ⚪ 当前为空 |
 | `~/.dsh/our-free-model/{settings,availability,catalog}.json` | 免费模型的开关 / **逐模型可用性** / 目录 | ⚠️ **不要复制** `availability.json` —— 它是本机出口 IP 的探测结果，换机必然失效（见「可用性」一节） |
 | `~/.dsh/.credentials.yaml` | 密钥 19 条 | ❌ 见 `secrets.md` |
 | `~/.dsh/sessions/` | 会话记录 11 MB | 可选 |

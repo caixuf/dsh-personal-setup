@@ -5,9 +5,19 @@
 # `profiles.broken-<ts>` and recreates it when the backend fails to start. A
 # profile-level patch is lost in that cleanup; a machine-level one survives.
 #
-# Without this row, `dsh-bot-gateway` (and any future host plugin that doesn't
-# have a `dsh.bundle.patch`) won't be loaded. See intent/dsh.md for why.
-- insert:
-    - id: bot-gateway
-      name: dsh-bot-gateway
-      # Runtime data defaults to $DSH_HOME/bot-gateway/; no config needed.
+# ── 当前状态：留空（只有注释）────────────────────────────────────
+# 2026-10-12 起本文件为空。原先的 `dsh-bot-gateway`（宿主插件）已卸载，
+# 改用 `deepseek-harness-weixin`（微信 iLink 官方通道，**正常 bundle**，
+# 不需要机器级挂载点）。
+#
+# 将来若再装**宿主插件**，两步缺一不可：
+#   判据：包的 package.json 有 `dsh.client` 但**没有** `dsh.bundle`
+#   1) 把下面注释段取消注释、改 id/name，本文件复制到 <dsh-home>/cordis.patch.yml
+#   2) 包复制一份到 <dsh-home>/node_modules/<包名>/   ← 浏览器半边按此路径解析
+# 只做第 1 步不够 —— dsh add 只装 profile 那份，机器级 patch 解析不到它。
+# 详见 intent/dsh.md 的「dsh-bot-gateway（已卸载）」专节。
+#
+# - insert:
+#     - id: <插件名>
+#       name: <包名>
+#       # 运行时数据默认落 $DSH_HOME/<插件名>/；一般无需 config

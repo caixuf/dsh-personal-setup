@@ -156,8 +156,12 @@ if (Test-Path $machinePatchTpl) {
     Warn "模板缺失，跳过机器级 patch: $machinePatchTpl"
 }
 
-# 宿主插件（无 dsh.bundle.patch，挂机器级而非 profile）需要机器级 node_modules 副本
-$hostPlugins = @('dsh-bot-gateway')
+# 宿主插件（无 dsh.bundle.patch，挂机器级而非 profile）需要机器级 node_modules 副本。
+# 判据：包的 package.json 有 dsh.client 但没有 dsh.bundle。
+# 当前 2026-10-12：dsh-bot-gateway 已卸载，此列表为空 ——
+# 现在用 deepseek-harness-weixin（微信），它是**正常 bundle**，走 dsh add 即可。
+# 将来新增宿主插件时把包名加进来。
+$hostPlugins = @()
 foreach ($hp in $hostPlugins) {
     $src = Join-Path $profileDir "node_modules/$hp"
     $dst = Join-Path $dshHome "node_modules/$hp"
@@ -168,8 +172,7 @@ foreach ($hp in $hostPlugins) {
     $n = (Get-ChildItem $dst -Recurse -File -Force -EA SilentlyContinue | Measure-Object).Count
     Say "✓ 已复制 $hp → $dst（$n 个文件）"
 }
-Say ''
-Say '机器级插件的设置在 DSH 内「机器人网关」分区完成（NapCat 扫码、账号登录等）。'
+if ($hostPlugins.Count -eq 0) { Say '（当前无宿主插件，无需机器级 node_modules 副本）' }
 
 Hdr '下一步'
 Say '1. **重启 DSH Desktop** —— 新 bundle 需重启才加载'
