@@ -5,6 +5,9 @@
 DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经验证 `fiberPhase: active`。
 （曾装过 `dsh-mobile`，因 CLI 损坏 + 流程繁琐**已卸载**，踩坑记录见下方「dsh-mobile」一节 —— 新机**不要装**。）
 
+另有 1 个**宿主插件** `dsh-bot-gateway`，**不挂在 profile 而挂机器级 patch**
+（`~/.dsh/cordis.patch.yml`），见其专节 —— 换机时别漏了这一处。
+
 ## 约束（AI 必读）
 
 | 项 | 值 | 说明 |
@@ -132,6 +135,87 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 **手机上要先开「USB 调试」**。不开时设备仍会以 **MTP** 出现（`VID_22D9&PID_2764`），
 但 `adb devices` 是空的 —— 别以为没连上。**realme/OPPO 的 VID 是 `22D9`**：
 `PID_2764` = 纯 MTP，`PID_2765` = MTP + ADB。
+
+## ✅ `dsh-bot-gateway`（聊天软件当远程入口）—— 已装
+
+**用途**：把 QQ（NapCat OneBot v11 / 官方机器人）/ Telegram / 飞书 / 钉钉 接成 DSH 的
+**远程任务网关**。手机聊天里发条消息就能建任务、续聊、查进度、收交付物 ——
+**这正是 `dsh-mobile` 没做成的事的另一条路**（见上一节）。
+
+**包**：`dsh-bot-gateway@0.3.9-beta`，MIT，**零运行时依赖、零 peer**（不会撞 DSH 的窄 peer 窗口）。
+
+### 🔴 挂载必须用**机器级** patch（换机必读）
+
+这是本插件**最关键**、也最容易做错的一点。README 原文警告：
+
+> 插件由组合树的**一行**组成（在 **`<dsh-home>\cordis.patch.yml` 机器级补丁层** ——
+> 注意**不是** `profiles\<name>\cordis.patch.yml`：DSH Desktop 桌面壳在后端启动失败时会把
+> 整个 `profiles` 目录隔离为 `profiles.broken-<时间戳>` 并重建，**profile 级补丁会随之丢失**；
+> 机器级补丁不受影响，重启后始终生效）。
+
+**所以本机是两处 patch 并存**，别合并：
+
+| 文件 | 放什么 |
+|---|---|
+| `~/.dsh/cordis.patch.yml`（机器级） | `bot-gateway` 这一行 |
+| `~/.dsh/profiles/desktop/cordis.patch.yml` | 其余所有 bundle 的配置 |
+
+机器级那行的写法（零配置开箱即用，运行时数据默认落 `~/.dsh/bot-gateway/`）：
+
+```yaml
+- insert:
+    - id: bot-gateway
+      name: dsh-bot-gateway
+      # config: { tasksRoot, statePath, settingsPath }  可选，默认 dsh-home/bot-gateway/
+```
+
+### ⚠️ 解析路径是 `<dsh-home>\node_modules\`，不是 profile 的
+
+README 明确：浏览器半边从 **`<dsh-home>\node_modules\dsh-bot-gateway\`** 定位 `package.json`
+（`profiles\<name>\node_modules` 只是"可放 junction 镜像保证 profile 解析稳定"）。
+
+**本机做法**：`plugin_manager install_bundle` 只装到 `profiles/desktop/node_modules/`，
+**需再复制一份到 `~/.dsh/node_modules/dsh-bot-gateway/`** 才能被机器级 patch 解析到。
+
+### ⚠️ `install_bundle` 会报 `not-bundle` —— 不是失败
+
+本插件是**宿主插件**（`main: ./index.mjs` + `dsh.client` 注入），**没有** `dsh.bundle.patch`，
+所以 `plugin_manager install_bundle` 返回 `application: failed` / `error.code: not-bundle`。
+
+**但 pnpm 其实已装成功**（输出 `added 1, done in 3.4s`）。判定与处理：
+
+1. 确认包已落盘：`~/.dsh/profiles/desktop/node_modules/dsh-bot-gateway/`（27 个文件）
+2. 复制到机器级 `node_modules`（见上）
+3. 机器级 patch 加那一行 → **重启 DSH**
+
+### 验证
+
+```powershell
+# 1. 启动自检日志（看板 404 时先看这个；后端 stderr 对桌面用户不可见）
+Get-Content "$env:USERPROFILE\.dsh\bot-gateway\boot.log"
+
+# 2. 浏览器半边自证端点（README 说外部无法靠探测 URL 验证注册，要用这个）
+#    /bot-gateway/api/client
+
+# 3. 设置页应出现「机器人网关」分区（slots: settings.section, order=5，内嵌 /bot-gateway/ iframe）
+```
+
+**看板**：📊 总览 ｜ 🐱 QQ 个人号（NapCat 安装/扫码/OneBot11）｜ 🤖 QQ 官方机器人 ｜
+✈️ Telegram ｜ 🐦 飞书 ｜ 💬 钉钉 ｜ ⚙️ 通用设置。
+**NapCat 一键安装 + 全部账号设置都在网页看板完成，无需改配置文件。**
+
+> 💡 NapCat 走 **WSL2 内置运行，免 Docker**：插件把 Docker 镜像导入为 Windows 内置的
+> WSL2 发行版并全程托管（本机已有 Docker 镜像时 `docker export` 复用，零下载）。
+> 备选 docker 模式需已装 Docker Desktop。
+
+### 桌面截图监控（值得一提的能力）
+
+`desktopWatch.enabled: true` 后，用 **Electron desktopCapturer** 每 `intervalSec`（默认 60）秒
+捕获全部显示器并主动推送；任意通道发 `/桌面` 立即现拍一张。**锁屏时抓的是桌面应用窗口画面**
+（文件名带 `-L`），不是锁屏图。截图落 `bot-gateway/screen-shots/`，滚动保留最近 `keepLast`（默认 60）张。
+支持免打扰时段（可跨零点）。
+
+⚠️ 这项会把你的屏幕内容发到聊天软件 —— **按需开启，不用时关掉**。
 
 ## 外观取向（用户偏好）
 
@@ -948,6 +1032,9 @@ tabbit                         磁盘（~/.agents/skills）
 | `~/.dsh/profiles/desktop/{package.json,cordis.patch.yml,pnpm-lock.yaml}` | 插件配置 | ✅ 小且关键 |
 | `~/.dsh/profiles/desktop/node_modules/` | 依赖产物 100.8 MB | ❌ **不要复制**，重建 |
 | `~/.dsh/skin-center-active.json` | ~~皮肤选择~~ | ⚪ **已失效**，插件卸载后无人读取，可不迁移 |
+| `~/.dsh/cordis.patch.yml` | **机器级**补丁层：`bot-gateway` 那一行 | ✅ 必须迁移 —— 见 `dsh-bot-gateway` 专节（profile 级 patch 会被 DSH 的 `profiles.broken-<ts>` 隔离丢掉） |
+| `~/.dsh/node_modules/dsh-bot-gateway/` | 该插件的**机器级**副本（浏览器半边按此路径解析） | ❌ 重建：装包后复制一份即可 |
+| `~/.dsh/bot-gateway/` | 该插件的运行时数据 + `boot.log` 启动自检 | ❌ 不迁移 |
 | `~/.dsh/our-free-model/{settings,availability,catalog}.json` | 免费模型的开关 / **逐模型可用性** / 目录 | ⚠️ **不要复制** `availability.json` —— 它是本机出口 IP 的探测结果，换机必然失效（见「可用性」一节） |
 | `~/.dsh/.credentials.yaml` | 密钥 19 条 | ❌ 见 `secrets.md` |
 | `~/.dsh/sessions/` | 会话记录 11 MB | 可选 |
