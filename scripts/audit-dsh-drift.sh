@@ -85,8 +85,8 @@ echo "########## 5. 机器级 patch 是否登记进仓库 ##########"
 if [ -f "$DSH_HOME/cordis.patch.yml" ]; then
   echo "  本机 ~/.dsh/cordis.patch.yml 存在:"
   sed 's/^/    /' "$DSH_HOME/cordis.patch.yml"
-  if ls "$REPO/templates/dsh/" | grep -q 'machine'; then
-    echo "  仓库有对应模板"
+  if ls "$REPO/templates/dsh/" 2>/dev/null | grep -q 'machine-patch'; then
+    echo "  仓库有对应模板 (templates/dsh/cordis.machine-patch.yml)"
   else
     echo "  ⚠️ 仓库 templates/dsh/ 下没有机器级 patch 的模板（换机会漏）"
   fi

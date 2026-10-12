@@ -1,0 +1,13 @@
+# Machine-level patch template — install as `<dsh-home>/cordis.patch.yml`
+# (NOT as `profiles/<name>/cordis.patch.yml`).
+#
+# Why machine-level: DSH Desktop isolates the whole `profiles/` directory into
+# `profiles.broken-<ts>` and recreates it when the backend fails to start. A
+# profile-level patch is lost in that cleanup; a machine-level one survives.
+#
+# Without this row, `dsh-bot-gateway` (and any future host plugin that doesn't
+# have a `dsh.bundle.patch`) won't be loaded. See intent/dsh.md for why.
+- insert:
+    - id: bot-gateway
+      name: dsh-bot-gateway
+      # Runtime data defaults to $DSH_HOME/bot-gateway/; no config needed.
