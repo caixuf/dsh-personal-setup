@@ -420,10 +420,17 @@ dsh plugin --profile desktop install
 | `kilo` | 裸 id | `step-5-preview-free`、`nemotron-3.5-lightning-free`、`ling-3.1-flash-free` |
 | `eac` | `org/model` | **`deepseek-ai/deepseek-v4.1-flash`**（即「免费国际版 DeepSeek」）、`moonshotai/kimi-k3`、`z-ai/glm-5.3` |
 
-eac 那 6 个是 `catalog.json` 的 `sealIds` **内置写死**的，不需要任何配置；
-**但它们同样受 region 门控**（UI 原文：*"This model is gated by egress country.
-Once a proxy changes your egress, the next probe moves it into the available group
-by itself."*）。
+eac 那 6 个是 `catalog.json` 的 `sealIds` **内置写死**的，不需要填任何 Key；
+**但它们完全不参与上一节的探测**（见下）。
+
+> ⚠️ **「免费的国际版 DeepSeek」＝ EAC 通道，不是免费车道。**
+> 这是最容易搞混的一点：`deepseek-v4.1-flash`（EAC）与你在本机 `availability.json`
+> 里看到的那些 `*-free`（opencode 免费车道）**不是一回事**，两套门控、互不相关。
+>
+> 🔴 **EAC 不进 `availability.json`** —— `src/catalog.js` 的通道注释写明：
+> *"the probe skips them"*（探测跳过它们）。所以**上一节的 region / throttled
+> 判定对 EAC 模型根本不适用**，别拿 `availability.json` 去解释 EAC 模型不显示 ——
+> 查错地方了。EAC 的显示与否由**下一节的宿主闸门 + GitHub 授权**决定。
 
 **本机实测（2026-10-12，出口 `112.87.186.2` / CN）**：
 
@@ -448,6 +455,57 @@ Get-Content "$env:USERPROFILE\.dsh\our-free-model\availability.json"
 
 **两台机器对比时只看两个数**：`egress.country` 和那个具体模型的 `state`。
 不一致就是出口国籍问题，**与配置无关**，改配置没用。
+
+### 🔴 EAC 通道（含「免费国际版 DeepSeek」）的 GitHub 授权闸门
+
+**这一节很可能是「另一台机器不显示免费国际版 DeepSeek」的第一嫌疑** ——
+比出口国籍更常见，且**与网络无关**。
+
+插件公告原文（v1.5.0 / v2.0.0 的 release note，README 已核实）：
+
+> EAC 协付渠道接入 GitHub 授权（**登录 + Star**）；**取消 Star 会失效**；
+> 服务器每 **12 小时**复查一次 Star，取消后授权会在复查窗口内失效。
+> **免费车道完全不受影响。**
+>
+> **EAC 授权强制已开启**，即日起**未登录并 star 仓库将无法使用 EAC 模型**。
+
+README「EAC 渠道」专节对闸门的**精确表述**（⚠️ 别夸大范围）：
+
+> **GitHub 授权闸门**：*自建网关（宝塔 Node 形态）*另带一道按人计的授权闸门
+> —— 对话请求除签名外还需携带一枚**专属令牌**，而令牌只发给
+> 「用 GitHub 登录 + 已 star 本仓库」的账号。……网关默认每 12 小时用保存的授权
+> 复查一次 star，取消 star 即在复查窗口内吊销令牌；GitHub 侧不可达时保留既有
+> 判定，不会误伤已授权用户。网关只申请 `read:user` 最小权限。
+
+> ⚠️ 另一形态是**签名网关（Cloudflare Worker）**，README 标为「推荐形态」，
+> 其门控是 HMAC 签名 + 模型白名单 + 可选按 IP 限速，**不涉及 GitHub star**。
+> 即「要不要 star」取决于插件接的**是哪一种网关**，不是一刀切。
+> 判断依据看设置页：要求 GitHub 登录并校验 star 的，就是自建网关形态。
+
+**为什么**：EAC 是**协付**通道，容量跟着本仓库的 Star 数走（每 1 个 Star，号池 +1.5）。
+把使用权与 Star 绑定，是让"用的人"与"撑住容量的人"对上。
+
+**表现**：未授权时 EAC 模型卡带 **🔒 锁标记**；已授权显示 `EAC DeepSeek V4.1 Flash`。
+只申请 `read:user` 最小权限，仅用于 star 复查。
+
+**解锁步骤**（在**那台不显示的机器**上做，不是本机）：
+
+> 设置 → Our Free Model → **EAC 渠道授权** → 「使用 GitHub 登录」
+> → 浏览器自动打开授权页 → 登录并 Star → 回到应用，插件自动完成领取
+> （**无需复制粘贴任何东西**；未 star 时页面给「我已 star，重新检查」，不必重新登录）
+
+**另一台机器缺 EAC 模型的排查顺序**（按可能性排序）：
+
+| # | 检查 | 怎么看 |
+|---|---|---|
+| 1 | **GitHub 授权 + Star 状态** | 设置页「EAC 渠道授权」看登录名与 star 校验；模型卡有无 🔒。**仅自建网关形态需要**（见上） |
+| 2 | **宿主闸门** | EAC **仅存在于两个桌面宿主**：DSHEAC AIO（Tauri 壳，需内核路径 + 内嵌 node + `web-desktop` profile 三重信号同时命中）与 DeepSeek Harness 桌面端（Electron 壳）。命令行 / 纯 `dsh web` / 任何其它运行方式中**该通道整体不存在** |
+
+> ⚠️ 第 2 条是硬门槛：如果那台机器不是 **DeepSeek Harness 桌面端 / DSHEAC AIO 桌面端**，
+> EAC 六个模型**根本不会出现**，怎么配都没用 —— 这时该用的是免费车道（opencode）的模型。
+>
+> 🔴 **出口国籍不在这张表里**：EAC 被 probe 跳过（见上），region 判定对它不适用。
+> 拿 `availability.json` 解释 EAC 模型不显示 = 查错了地方。
 
 **真要改，只有两条路**（都涉及改网络出口，⚠️ 按 `conventions.md` 属于要先问的范畴）：
 
