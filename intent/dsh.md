@@ -2,7 +2,7 @@
 
 ## 这是什么
 
-DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经验证 `fiberPhase: active`。
+DSH 桌面端的插件组合与外观配置。共 **15 个 bundle**，全部经验证 `fiberPhase: active`。
 （曾装过 `dsh-mobile`，因 CLI 损坏 + 流程繁琐**已卸载**，踩坑记录见下方「dsh-mobile」一节 —— 新机**不要装**。）
 
 ## 约束（AI 必读）
@@ -30,6 +30,9 @@ DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经�
 | `@anionex/dsh-eye-care` | 暖色护眼主题 | 明暗双套，不劫持 Appearance |
 | `@weibaohui/dsh-sync` | 多机同步/备份 | Git + WebDAV + 本地文件夹三协议 |
 | `dsh-mnemon` | 长期记忆 | 附带 11 个子行（4 source + 5 strategy） |
+| `@linxin666/dsh-client-ui-skill-explorer` | **skill 管理中心** | 补内置缺口：GUI 里按来源浏览/启停/增删 skill。见「Skill 加载机制」 |
+| `@deepseek-ai/dsh-experimental-agent-team-profile` | **Agent Teams**（官方实验） | 多 teammate 协作、共享任务板。本会话正在使用 |
+| `@deepseek-ai/dsh-experimental-voice-input-bundle` | **语音输入**（官方实验） | 官方实验特性 |
 | `dsh-mobile` | 手机远程操控 DSH | ❌ **已卸载**，见下方专节（新机不要装） |
 
 ### ⚠️ 包装错名陷阱（曾踩过）
@@ -225,8 +228,8 @@ minimumReleaseAgeExclude:
 dsh plugin --profile desktop list
 ```
 
-期望：12 个 bundle 全部 `fiberPhase: active`、零加载失败。
-（若将来装 `dsh-mobile` 则为 13 个，但当前**不建议装**，见该节。）
+期望：15 个 bundle 全部 `fiberPhase: active`、零加载失败。
+（若将来装 `dsh-mobile` 则为 16 个，但当前**不建议装**，见该节。）
 
 ### 桌宠完整性自检（**每次 plugin_manager 操作后必做**）
 
@@ -322,6 +325,41 @@ $pet="$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-whale-girl-pet"
 
 **装插件的最佳时机**：刚启动 DSH、页面尚未加载桌宠时（此时 `assets/` 未被持有）。
 
+## Skill 管理插件的选择依据（2026-10-12）
+
+内置 `dsh-skill-filesystem` 只缺「GUI 可见性 + 启停/增删」，因此只需补一个。
+生态里有多个同类，**选型实测数据**（npm 月下载量）：
+
+| 插件 | 月下载 | 定位 |
+|---|---|---|
+| **`@linxin666/dsh-client-ui-skill-explorer`** ✅ 已选 | **169,660** | 按来源浏览（bundled/project/user/custom/runtime）+ 启停 + 增删 |
+| `dsh-skill-hub` | 7,149 | 读官方 `ctx.skills` registry（含第三方 provider） |
+| `dsh-skill-picker` | 5,792 | 输入框旁按钮，插入 `/skill-name` |
+| `dsh-skill-mcp-panel` | 4,343 | skill + MCP 服务器管理 |
+| `dsh-skill-market` | 2,218 | 技能市场（SkillHub + ClawHub 双源） |
+| `dsh-skill-studio` | 1,811 | 可视化编辑 + 从会话日志挖掘 skill |
+| `dsh-skills-nexus` | 1,569 | 把任意 git 仓库注册成 skill |
+| `dsh-plugin-skill-manager` | 114 | ⚠️ **别装**：8 月包、无 peer 声明、描述仅一行 |
+
+**为什么选第一个**：
+
+1. **下载量是第二名的 24 倍**，生态事实标准
+2. 按**来源分类**浏览 —— 正好对上「Skill 加载机制」那套 5 级优先级
+3. 依赖极干净：peer 只有 `react` + `@deepseek-ai/dsh`
+4. **作者与已装的 skin-center 同一人**（`@linxin666`），兼容性风险低
+
+**安装实测**（一次成功，无 EPERM）：
+
+```
+install_bundle @linxin666/dsh-client-ui-skill-explorer
+  → application: applied, exitCode 0, added 1, done in 1.5s
+  → 桌宠体检 70/70、51/51、4/4 分毫未动（diff 官方源 缺失 0、多余 0）
+  → fiberPhase: active（patchId: ui-skill-explorer）
+```
+
+> 💡 注意：这次**没有**触发 EPERM，说明「`assets/` 被锁」并非必然导致失败 ——
+> 与当时 pnpm 是否需要 `rename` 整个包目录有关。**仍应每次操作后体检。**
+
 ## ⚠️ plugin_manager 装插件的两种「假失败」（2026-10-10 实测）
 
 **症状**：`install_bundle` 返回 `application: failed` 或超时，看起来装失败了。
@@ -395,6 +433,105 @@ cd "$USERPROFILE/.dsh/profiles/desktop"
 **用户层表现**：在「设置 → 通用 → 外观」改了明暗，会被皮肤中心覆盖。
 
 **正确做法**：**改明暗去「设置 → 皮肤中心」改**，不要只改通用设置。
+
+## Skill 加载机制（2026-10-12 实测）
+
+DSH 的 skill 有**两条来源**，之前本仓库完全没记录，换机时容易漏。
+
+### 一、内置 skill（随安装包，只读）
+
+| skill | 位置 | 机制 |
+|---|---|---|
+| `office-docx` / `office-pptx` / `office-xlsx` | `resources/runtime/office-skills/` | 代码**硬编码**注册 `assetRoot` |
+| `diagnose-windows-sandbox-acl` | 同目录 `scripts/` | 同上 |
+
+路径由环境变量算出（asar 内原文）：
+
+```js
+process.env.DSH_PRIMARY_RUNTIME ?? process.env.DSH_BUNDLED_PRIMARY_RUNTIME
+  + '/../office-skills'
+```
+
+**跟着 DSH 升级走，不要手改。**
+
+### 二、磁盘扫描（可自建）
+
+`dsh-skill-filesystem` 按**优先级**扫描（数字小的赢，同名时高优先级遮蔽低的）：
+
+| 优先级 | 名称 | 路径 |
+|---|---|---|
+| 100 | `project-dsh` | `<项目根>/.dsh/skills` |
+| 200 | `project-agents` | `<项目根>/.agents/skills` |
+| 300 | `custom` | `Config.customSkillDirs` |
+| 400 | `user-dsh` | `<DSH home>/skills`（即 `~/.dsh/skills`） |
+| 500 | `user-agents` | `<agents home>/skills`（即 `~/.agents/skills`） |
+
+> **项目根 = 最近的含 `.git` 的祖先目录**；没有则用 cwd。
+> 用户级 DSH 根会**跳过 `.system` 子目录**。
+
+**其他配置项**（asar 文档原文）：
+
+| 项 | 默认 | 含义 |
+|---|---|---|
+| `includeDefaultRoots` | `true` | 是否包含项目/用户根 |
+| `watch` | `true` | **监视目录变更并自动失效重扫**（热重载） |
+| `bundledSkillDir` | — | 内置 skill 根，按 rank 扫描 |
+
+### ⚠️ 多工具共用 `.agents/skills`（易混淆）
+
+`~/.agents/skills` 是**多工具共享**目录。实测本机 `tabbit` 同时出现在：
+
+```
+~/.agents/skills/tabbit                    ← 优先级 500
+~/.claude/skills/tabbit                    ← Claude Code 自己的目录
+~/.workbuddy/plugins/cache/tabbit-browser/tabbit   ← WorkBuddy 写入
+```
+
+**装了 WorkBuddy / CodeBuddy 之后，它们会往 `.agents/skills` 塞东西**，所以那个目录的内容不完全由你控制。
+
+### 内置够不够用
+
+| 能力 | 内置支持 |
+|---|---|
+| 多根扫描（5 级优先级） | ✅ |
+| 热重载（`watch: true`） | ✅ |
+| `customSkillDirs` 自定义目录 | ✅ |
+| **GUI 里看见加载了哪些 skill** | ❌ |
+| **启用/禁用单个 skill** | ❌ |
+| **新建/编辑/删除 skill** | ❌ |
+
+**结论：读够用，管理不够。** 自己手写 `SKILL.md` 丢目录 → 够用；想可视化管理和开关 → 需插件（见下）。
+
+### 怎么自己加一个 skill
+
+项目级（跟项目走，可入库）：
+```
+<项目根>/.dsh/skills/<名字>/SKILL.md
+```
+
+用户级（所有项目可用）：
+```
+~/.dsh/skills/<名字>/SKILL.md
+```
+
+`SKILL.md` 需 frontmatter（`name` + `description`），**description 要写清触发场景** —— 模型只看这个描述决定是否加载。
+
+> ⚠️ `~/.dsh/skills` 在本机**尚不存在**。若想自建用户级 skill 且优先于 `.agents/skills`，用这个路径（400 > 500）。
+
+### 本机实际加载的 skill（2026-10-12）
+
+```
+diagnose-windows-sandbox-acl   内置
+office-docx                    内置
+office-pptx                    内置
+office-xlsx                    内置
+tabbit                         磁盘（~/.agents/skills）
+```
+
+⚠️ **这个清单每个会话可能不同** —— `project-dsh` / `project-agents` 依赖**当前项目根**。
+例如 `imfl_auto_test` 项目会额外加载该项目自己的 skill
+（`agent-context-boundary-principle`、`cpp-concurrency-dds-principles`、
+`deterministic-sil-architecture`、`imfl-auto-test-architecture` 等）。
 
 ## 数据位置（迁移时）
 
