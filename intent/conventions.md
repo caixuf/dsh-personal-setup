@@ -101,3 +101,42 @@
 | 公司机 | 需内网 + 另一套端口 |
 
 **⇒ 先确认是哪台机器，再给方案。** 别把一台机器的结论套到另一台。
+
+## 九、写 DSH 插件时该守的三条纪律
+
+> 来源：对照 `oh-my-hermes`（Hermes Agent 的插件）的架构。
+> 详见 `ecosystem.md`。**这三条是设计纪律，不是功能。**
+
+### 1. 拒绝优雅降级
+
+能力不可用时，**报不可用，不要偷偷降级成别的东西**。
+
+> OMH 原话："an unavailable board is reported as **unavailable, not downgraded to delegation**"
+
+**为什么**：降级会让上层**以为拿到了 A，实际只是 B**。这与本机硬规则
+「看起来等价的开关实际不等价」是同一个病 —— 是本机反复出问题的**主因**。
+
+### 2. `prepared` ≠ `observed`，严格分离
+
+**准备好的**不等于**观察到的**。执行证据**只在有独立的运行时记录之后**才算数。
+
+落地方式：见自建 skill `evidence-boundary`（`intent/dsh.md`）。
+
+### 3. 薄桥接，不越权
+
+**插件只算「该调哪个工具、参数是什么」，由宿主走正常工具循环执行。**
+不要自己起服务、不要绕过宿主的能力边界。
+
+> OMH 原话："OMH **never calls a native tool** from the handler."
+
+**反面案例**：`dsh-mobile`（已卸载）—— 自己起 TLS 服务、要求改防火墙，属越权设计，
+且流程繁琐到用户放弃。
+
+### 💡 附带：skill 要写短
+
+OMH 把 142 个 skill 的共性抽到一份 `skill-common-rail.md`，理由是：
+
+> "an install does not pay the same bytes **88 times per turn**"
+
+**skill 目录每轮都进上下文**。本项目自建 skill 遵循同一原则：
+`evidence-boundary` 正文仅 ~2KB。
