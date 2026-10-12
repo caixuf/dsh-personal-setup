@@ -407,6 +407,56 @@ Get-Content "$env:USERPROFILE\.dsh\bot-gateway\boot.log"
 > 另两条不改环境的路：插件 `apiBase` 指向本地反代；或系统层全局代理。
 > **出网代理归 7897（星连）那套，端口分工是用户定的硬规矩，不要动。**
 
+### 🔴 已打补丁：看板输入框被 3 秒轮询吞掉
+
+**症状**：在看板里点任何输入框（token / allowUsers / 模型选择…）**打不了字**，
+「最小化再打开」就恢复。用户原话：「对话框无法输入的问题，最小化再打开就可以了」。
+
+**根因**（`lib/webui-app.js`，精确到行）：通用设置页那**三个模型下拉**在
+`fetchModelsCatalog().then(...)` **异步回调**里被无条件 `innerHTML` 重建：
+
+```js
+fetchModelsCatalog().then(function () {
+  box1.innerHTML = modelSelectHtml(..., 'cfg-model', ...);   // ← 无条件覆盖
+  box2.innerHTML = modelSelectHtml(..., 'cfg-cmodel', ...);
+  box.innerHTML  = modelSelectHtml(..., 'cfg-users-defaultModel', ...);
+});
+```
+
+而保护标志 **`isFormPopulated` 只在 L449 置位一次**，管不到这个异步回调 ——
+3 秒轮询的 `if (!isFormPopulated) fetchSettings()` 之后再也不跑，但**下拉重建照旧**。
+你在打字 → 下拉被换掉 → **焦点丢失、字作废**。
+
+**「最小化再打开」能好**是因为重挂载时表单是空的，不存在「正在输入」这个状态。
+
+**补丁**（`scripts/patches/dsh-bot-gateway-focus-guard.sh`）沿用**作者自己**的思路
+—— 他在 L804 注释里承认过同类问题（「3s 轮询会把用户开着的下拉直接干掉」），
+但 `domInUse()` **只保护了 `#users-table` 一处**，其它输入框全裸。
+补丁把焦点保护扩到整个面板：
+
+```js
+// 注入的辅助函数
+function anyInputFocused() {
+  var ae = document.activeElement;
+  if (!ae) return false;
+  var t = ae.tagName;
+  return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT';
+}
+// 插在三个下拉重建之前
+if (anyInputFocused()) return;
+```
+
+**性质**：纯 UI 层防抖，**不改逻辑、不动协议、不碰适配器与安全边界**。
+幂等（已打过则跳过），带 `.bak-orig` 备份，改完 `node --check` 验语法。
+两份都要改（profile 的 + 机器级 `node_modules` 的，浏览器半边读后者）。
+
+```bash
+# 升级插件后重跑
+bash scripts/patches/dsh-bot-gateway-focus-guard.sh
+```
+
+> ⚠️ **升级 `dsh-bot-gateway` 会覆盖这个补丁**（改的是包内文件）→ 重跑上面的脚本。
+> 已在脚本里用 marker 注释（`dsh-bot-gateway-patch:guard-model-select`）标记，便于确认。
 
 ### 桌面截图监控（值得一提的能力）
 
