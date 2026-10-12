@@ -104,6 +104,107 @@
 
 ---
 
+## 浏览器能力（2026-10-12 实测）
+
+> **这是能力升级，不是外观插件。** 补齐后 DSH 具备前端/后端工程师的完整开发闭环。
+
+### ❌ 内置 Tabbit 浏览器：**无法使用**
+
+| 项 | 状态 |
+|---|---|
+| `%LOCALAPPDATA%\Tabbit\LocalAgent\bin\tabbit-cli.exe` | ✅ 存在（2.67 MB，有 `tabs/claim/resume/nodejs/diagnose`） |
+| **Tabbit 浏览器本体** | ❌ **未安装**（目录里只有 `User Data`，无 exe） |
+| 进程 | ❌ 未运行 |
+
+**结论**：CLI 只是"遥控器"，**遥控的电视没买**。
+而且内置 skill 描述写的是 *"Control **the user's** Tabbit Browser"* ——
+它**假定你自己装了 Tabbit**，不是 DSH 内置浏览器。**不要指望它。**
+
+### ✅ 已装：`dsh-browser-cdp` 0.18.19（9,206/月）
+
+**它是 ego-lite 的封装，自带运行时**（`runtime/` 37 个文件，含 `ego-browser` + `ego-linux`）。
+
+**关键优势**：用**你已装的 Chrome**（`bcdp_doctor` 实测指向
+`...\Google\Chrome\Application\chrome.exe`），**不下载新浏览器**。
+
+**实测验证（2026-10-12，全绿）**：
+
+| 能力 | 结果 |
+|---|---|
+| `bcdp_doctor` | ✅ `ok=true`，37 个 `bcdp_*` 工具 |
+| 导航 | ✅ example.com → 自动跳 IANA，title 正确 |
+| **语义快照** | ✅ 完整 DOM 树 + `ref=109` 可点击引用 |
+| ref 读取 | ✅ `ref=109` → `"Instructions and Guides"` |
+| **点击** | ✅ 跳转 `/help`，title 更新 |
+| JS 执行 | ✅ 返回计算样式、链接列表 |
+| **DOM/CSS 注入** | ✅ 注入粉红块，`getComputedStyle` 正确 |
+| **截图** | ✅ 视觉确认 "PROBE OK" 真实渲染，尺寸与 JS 计算一致 |
+| 元素截图 | ✅ `#__probe` 精确截取 80×40 |
+
+**对前端开发的意义**：快照定位元素 → 注入调试 → 截图验证视觉，
+正是改样式/调布局的核心循环。**完全够用。**
+
+**额外能力**：
+- `bcdp_login_import` —— 从日常 Chrome/Edge/Brave **按域名导入登录态**
+  （兼容 Chrome 127+ App-Bound Encryption，不做离线解密）
+- **实时观察窗**（SSE 推流 + 鼠标直控），能看着 agent 操作并随时接管
+- 未装 `dsh-better-sidebar` 时自动回退为右下角**浮动观察球**
+
+⚠️ 已知：`bcdp_doctor` 报 `judge laya: key=MISSING`（视觉判断链路未配置）。
+**不影响**上述 CDP 能力，那些是纯 CDP 操作。
+
+### 其他候选（备查，未装）
+
+| 插件 | 月下载 | 说明 |
+|---|---|---|
+| `dsh-ego-browser` | 4,332 | 同源（`Fisfzy/dsh-ego-browser`），30+ `ego_*` 工具 + SSE 画面 |
+| `@caob23/dsh-browser-control` | 2,166 | Chrome 扩展 + 插件，操控真实浏览器 |
+| `dsh-browser-tool` | 958 | 从 **oh-my-pi 移植**，支持 headless/CDP/真实 Chrome |
+| `dsh-playwright-browser` | 1,053 | Playwright 语义多标签 |
+| `dsh-agent-browser` | 396 | 基于 **Vercel agent-browser** 的封装 |
+
+**上游对比**：`vercel-labs/agent-browser` ★43,831、npm **767 万/月**（Rust）；
+`citrolabs/ego-lite` ★17,139 但**无 npm 包**（从源码装）。
+⚠️ **DSH 侧的封装下载量都偏低**（最高 9,206/月），尚无事实标准。
+
+---
+
+## 壁纸 / 外观（2026-10-12）
+
+### 已装：`dsh-wallpaper-bg` 0.5.12（3,289/月）
+
+**选它的理由**：**peer 只有 `react`** —— 依赖最干净，不捆绑额外插件
+（对比 `dsh-any-background` 需要 `dsh-better-sidebar`）。
+
+**能力**：
+- 内置 **10 张 Unsplash 高清图**
+- **本地自定义图片 / 视频上传**
+- **只读接入本机 Wallpaper Engine 壁纸库**（视频/网页壁纸原生渲染）
+- 「同步桌面壁纸」模式（只读跟随当前桌面）
+- **浅色外观自动铺半透明白雾、深色自动压暗** → 保证界面细字始终清晰
+- 主页面标题区有「**原生背景**」开关：一键清掉雾层/遮挡
+- 壁纸层与桌面 Wallpaper Engine **完全独立**（在 DSH 换壁纸不动你的桌面）
+
+**入口**：
+- `settings.section` —— 设置页面板
+- `conversation.header.leading` —— 主页面开关（空白首页与会话页都可见）
+
+**为什么选它而不是 skin-center**：用户明确说「**不需要花哨皮肤，能换壁纸就很舒服**」。
+`@linxin666/dsh-client-ui-skin-center` 是整套皮肤系统（且会覆盖通用外观设置，见 `dsh.md`），
+`dsh-wallpaper-bg` 只做壁纸这一件事。
+
+### 其他候选（未装）
+
+| 插件 | 月下载 | 特点 | peer |
+|---|---|---|---|
+| `dsh-background-by-model` | **8,159** | 按模型配不同壁纸 + 布局模式 | 6 |
+| `dsh-any-background` | **7,273** | 颜色轮 + 透明度/模糊 + 主界面/设置界面分开调 | 6（含 `dsh-better-sidebar`） |
+| `dsh-wallpaper-rotator` | 177 | 定时轮换 + 交叉淡入 | **0** |
+| `@frog755/dsh-wallpaper` | 770 | 图片 + 本地压缩 MP4 | 6 |
+| `@baiiii/dsh-wallpaper-local` | 185 | Wallpaper Engine/Steam 选择器 | 2 |
+
+---
+
 ## 调研方法（下次照做，省时间）
 
 1. **npm registry API**（`registry.npmjs.org/<pkg>`）—— 拿版本、peer、描述
@@ -112,6 +213,9 @@
 3. **GitHub API**（`api.github.com/repos/<owner>/<repo>`）—— 拿 ★、更新时间、结构
 4. **看 `description` 里的关键词**：出现 Hermes / Claude / Codex 等**别的框架名**时，
    先确认是不是**跨框架插件**（大概率装不上）
+5. **查 peer 数量** —— peer 越少越好装、越不容易牵连额外插件
+6. **装完必须实测**（`bcdp_doctor` 这类自检 + 真实操作），
+   **`fiberPhase: active` 不等于能用** —— 内置 Tabbit 就是 active 但浏览器根本没装
 
 **关键判据**：GitHub ★ 高 ≠ npm 下载高。OMH 就是 ★3,305 但 npm 仅 1,527/月
 （用户从源码装）。**两个数据都要看。**

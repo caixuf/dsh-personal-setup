@@ -2,7 +2,7 @@
 
 ## 这是什么
 
-DSH 桌面端的插件组合与外观配置。共 **15 个 bundle**，全部经验证 `fiberPhase: active`。
+DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经验证 `fiberPhase: active`。
 （曾装过 `dsh-mobile`，因 CLI 损坏 + 流程繁琐**已卸载**，踩坑记录见下方「dsh-mobile」一节 —— 新机**不要装**。）
 
 ## 约束（AI 必读）
@@ -33,6 +33,8 @@ DSH 桌面端的插件组合与外观配置。共 **15 个 bundle**，全部经�
 | `@linxin666/dsh-client-ui-skill-explorer` | **skill 管理中心** | 补内置缺口：GUI 里按来源浏览/启停/增删 skill。见「Skill 加载机制」 |
 | `@deepseek-ai/dsh-experimental-agent-team-profile` | **Agent Teams**（官方实验） | 多 teammate 协作、共享任务板。本会话正在使用 |
 | `@deepseek-ai/dsh-experimental-voice-input-bundle` | **语音输入**（官方实验） | 官方实验特性 |
+| `dsh-browser-cdp` | **浏览器自动化**（能力级） | 用**你已装的 Chrome**，37 个 `bcdp_*` 工具。见 `ecosystem.md` |
+| `dsh-wallpaper-bg` | **壁纸**（外观） | 只做壁纸，peer 仅 `react`。见 `ecosystem.md` |
 | `dsh-mobile` | 手机远程操控 DSH | ❌ **已卸载**，见下方专节（新机不要装） |
 
 ### ⚠️ 包装错名陷阱（曾踩过）
@@ -228,8 +230,8 @@ minimumReleaseAgeExclude:
 dsh plugin --profile desktop list
 ```
 
-期望：15 个 bundle 全部 `fiberPhase: active`、零加载失败。
-（若将来装 `dsh-mobile` 则为 16 个，但当前**不建议装**，见该节。）
+期望：17 个 bundle 全部 `fiberPhase: active`、零加载失败。
+（若将来装 `dsh-mobile` 则为 18 个，但当前**不建议装**，见该节。）
 
 ### 桌宠完整性自检（**每次 plugin_manager 操作后必做**）
 
