@@ -24,8 +24,11 @@ templates/              ← 【是什么】可直接复制、不含密钥
   systemd/*.service     systemd 单元
   litellm/config.yaml   本地模型网关配置（已剔除密钥）
   dsh/                   DSH profile 的配置三件套
+  skills/               自建 skill（当前：evidence-boundary，见 intent/dsh.md）
 scripts/
   audit.sh              盘点**当前机**实际状态，供 AI 与新机对比
+  apply.sh              幂等落地（默认 --check 只读）
+  check-secrets.sh      提交前密钥扫描
 ```
 
 ## AI 配置新机的流程

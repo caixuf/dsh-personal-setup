@@ -518,6 +518,59 @@ process.env.DSH_PRIMARY_RUNTIME ?? process.env.DSH_BUNDLED_PRIMARY_RUNTIME
 
 > ⚠️ `~/.dsh/skills` 在本机**尚不存在**。若想自建用户级 skill 且优先于 `.agents/skills`，用这个路径（400 > 500）。
 
+### 📌 本仓库自建 skill：`evidence-boundary`（2026-10-12）
+
+**位置**：`~/.dsh/skills/evidence-boundary/SKILL.md`（模板在 `templates/skills/`）
+**优先级**：`user-dsh`（400），高于 `tabbit` 所在的 `.agents/skills`（500）
+
+**它解决什么**：两次真实事故的病根都是
+**「把文档/代码里写的当成实际是什么」**——
+
+| 事故 | 当时依据 | 真实原因 |
+|---|---|---|
+| WorkBuddy 缺模型 | 读插件源码 + 作者注释 | **设置页一个开关**（答案在 `state.json`，没打开过） |
+| R6 编译失败 | 读 handover 文档的推断 | **`subst` 子串替换写成 `_im_im`**（一条 `grep conaninfo.txt` 即可证伪） |
+
+**核心机制**（借鉴 `oh-my-hermes` 的 `prepared_not_observed` 契约，改写为 DSH 原生）：
+
+1. **证据分级**：每条结论标注 `observed`（实测+命令+输出）/ `read`（文件:行号）/ `inferred`（推理，标明未验证）
+2. **裁决词表**：`VERIFIED` / `FIX_READY` / `NEEDS_MORE_EVIDENCE` / `BLOCKED_BY_ENVIRONMENT` / `DISPROVEN`
+   —— **禁止**"应该可以了""大概率是"
+3. **同一假设失败 2 次 → 强制换假设**（不是换变体）
+4. **用户说"以前是好的"时，先找 delta**，先证明"什么没变"
+5. 改前**隔离现场**（移到备份目录而非 `rm`）+ **临时文件验证语义**
+6. 改完**端到端验证**（用与失败时完全相同的参数重跑）
+
+**安装**：
+```bash
+mkdir -p ~/.dsh/skills/evidence-boundary
+cp templates/skills/evidence-boundary/SKILL.md ~/.dsh/skills/evidence-boundary/
+```
+
+**验证**（走 skill-explorer 的真实 API）：
+```powershell
+$h = @{ Origin="http://127.0.0.1:19387"; Referer="http://127.0.0.1:19387/" }
+(Invoke-WebRequest "http://127.0.0.1:19387/api/dsh-skill-explorer/list" -Headers $h -UseBasicParsing).Content |
+  ConvertFrom-Json | Select-Object -ExpandProperty groups |
+  ForEach-Object { "[$($_.key)] " + (($_.skills | ForEach-Object { $_.name }) -join ', ') }
+```
+
+实测输出（2026-10-12）：
+```
+[bundled     ] diagnose-windows-sandbox-acl, office-docx, office-pptx, office-xlsx
+[user-dsh    ] evidence-boundary          ← 自建，level=user-dsh, modelInvocable=true
+[user-agents ] tabbit
+```
+
+**设计取舍**：正文仅 ~2KB（每轮都进上下文，刻意写短）；只用 `name` + `description`
+两个 frontmatter 字段（与官方 office-* 一致）；`description` 中英双写触发词以提高命中率。
+
+> 💡 **`oh-my-hermes` 是什么**：它是 **Hermes Agent**（`NousResearch/hermes-agent`）
+> 的插件，**不是 DSH 插件，装不上**。但它的工程结构值得借鉴 ——
+> 142 个 skill 共用一份 `skill-common-rail.md`（避免每轮重复 88 份文本），
+> 以及 `prepared_not_observed` / `not_observed` 的证据边界词汇。
+> 本仓库只借鉴**理念**，不搬运其代码（工具名/路径/agent 机制全不同）。
+
 ### 本机实际加载的 skill（2026-10-12）
 
 ```
