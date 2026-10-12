@@ -13,7 +13,7 @@
     "dsh-wallpaper-bg": "^0.5.12",
     "dsh-whale-girl-pet": "^0.3.9",
     "dsh-wsl-tool": "^1.11.0",
-    "dsh-wsl-workspace": "link:C:/Users/20247/Downloads/minimax_work/dsh-wsl-workspace-fork",
+    "dsh-wsl-workspace": "^0.7.5",
     "dsh-wsl-workspace-picker": "^0.1.1"
   },
   "dsh": {

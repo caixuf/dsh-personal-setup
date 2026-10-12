@@ -22,7 +22,7 @@ DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经�
 | `@deepseek-ai/dsh-web-app` | Web 界面层 | 必需 |
 | `dsh-our-free-model` | 免费模型接入 | ✅ 用 **npm 版**（`dsh-our-free-model@^2.1.0`）；本机已于 2026-10-12 从旧机 `file:` tgz 切到 npm |
 | `dsh-wsl-tool` | WSL 命令/路径/环境工具 | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor` |
-| `dsh-wsl-workspace` | 会话执行环境落地 WSL | ⚠️ **本地 fork 0.7.7**，见「WSL 用户级 skill fork」一节 |
+| `dsh-wsl-workspace` | 会话执行环境落地 WSL | **官方 0.7.5**。fork 试装后回滚，见「WSL 用户级 skill fork」 |
 | `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | |
 | `dsh-whale-girl-pet` | 鲸鱼娘桌宠 | ⚠️ 见下方「桌宠脆弱性」。**独立插件，不依赖皮肤中心** |
 | `dsh-theme-studio` | 主题/配色 | 12 预设 + 深色对比度守护（亮度 < 0.18 自动提亮）。见「外观插件教训」 |
@@ -161,6 +161,9 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 
 ## WSL 用户级 skill fork（2026-10-12）
 
+> **状态：❌ 已回滚到官方 0.7.5。** fork 代码保留但**未装入**。
+> 原因见「❌ 致命坑：0.7.5 → 0.7.7 不是补丁升级」。重做请直接看该节。
+
 ### 问题
 
 WSL 里有 **61 个 skill**，但 DSH 开 WSL 会话时**只加载 5 个**（4 内置 + tabbit）：
@@ -190,34 +193,66 @@ WSL 里有 **61 个 skill**，但 DSH 开 WSL 会话时**只加载 5 个**（4 �
 
 端到端实测：真实路径发现 **61 个 skill，source 标 `user-agents`**。
 
-### ⚠️ 安装路径的三个坑（我都踩了）
+### ❌ 致命坑：0.7.5 → 0.7.7 **不是补丁升级**
 
-**只有第 3 条可行**：
+装上 fork（基于上游 0.7.7）后，**所有 WSL 会话都打不开**：
+
+```
+resume failed for session "session-7029a315...": RemoteError:
+Unknown agent preset: wsl-standard (gateway/internal)
+```
+
+**已排除是我的改动**：diff 只碰 `src/host/wsl-skills.ts`，preset/apply/materialize 零改动，
+`main` 与 `HEAD` 的 `variantGeneration` 命中数都是 10。
+
+**真因是版本跳级**。`wsl-standard` 不是内置的，是**插件启动时从内置 preset 派生**的；
+上游 0.7.5 → 0.7.7 **重写了这套派生机制**：
+
+| 符号 | 0.7.5（能跑） | 0.7.7（装上就崩） |
+|---|---|---|
+| `variantGeneration` | **0 处** | 4 处 |
+| `agentPresets` | 15 处 | 19 处 |
+
+新机制要配套的新配置，而 profile 里没有 → 派生不出 `wsl-standard` → 旧会话 resume 全挂。
+
+⚠️ **这正是「能跑的配置别动」那条铁律要防的事**：小版本号 +N 不代表兼容。
+
+### ✅ 重做方法：**fork 0.7.5，不要 fork 0.7.7**
+
+保持基线与现役版本一致，只叠加 skill 扫描改动：
+
+```bash
+cd ~/code/dsh-wsl-workspace
+git checkout -b feat/wsl-user-level-skills-075 v0.7.5   # 基线锁 0.7.5
+# 只移植 src/host/wsl-skills.ts 的那 176 行 + 对应测试
+npm install && npm run build     # 重新生成 lib/（S4：lib 必须与 src 一致）
+```
+
+装之前**必须**验证：`plugin_manager` 报 `applied`/`restart-required` 之后重启，
+**开一个全新 WSL 会话**（不要只 resume 旧会话），确认 preset 正常。
+
+### 安装路径的三个坑（都踩过）
 
 | 尝试 | 结果 | 原因 |
 |---|---|---|
-| `link:~/code/dsh-wsl-workspace` | ❌ `application: failed` | `~` 被解析成 `C:\Users\20247\code\...`，**目录不存在** |
-| `link:\\wsl.localhost\Ubuntu-24.04\...` | ❌ `application: failed` | 反斜杠被吃成 `C:\wsl.localhost\...` → 坏 junction |
-| **`link:` Windows 工作区副本** | ✅ `restart-required` | 先把 fork 复制到 Windows 可访问路径 |
+| `link:~/code/dsh-wsl-workspace` | ❌ `failed` | `~` 被解析成 `C:\Users\20247\code\...`，**目录不存在** |
+| `link:\\wsl.localhost\Ubuntu-24.04\...` | ❌ `failed` | 反斜杠被吃成 `C:\wsl.localhost\...` → 坏 junction |
+| `link:` Windows 工作区副本 | ✅ 能装上 | 先复制到 Windows 可访问路径 |
 
-**运行中的安装方式**：
+⚠️ 前两次失败**中途把能用的官方版卸掉了**（`Packages: -1`），且留下坏 junction。
+**教训：每次 `install_bundle` 后先查状态再动下一步**，别连续试。
 
-```
-node_modules\dsh-wsl-workspace  ──junction──>  C:\Users\20247\Downloads\minimax_work\dsh-wsl-workspace-fork
-package.json:  "dsh-wsl-workspace": "link:C:/Users/20247/Downloads/minimax_work/dsh-wsl-workspace-fork"
-```
-
-WSL 侧原仓 `~/code/dsh-wsl-workspace` 保留为 git 源；**改代码要在 Windows 副本改完，
-再同步回 WSL 仓提交**（两边不是同一个目录）。
-
-### 回滚方式
+### 回滚方式（本次已验证有效）
 
 ```bash
-# 删 package.json 里的 link 登记 + 断掉 junction，然后装回官方版
-dsh plugin --profile desktop install dsh-wsl-workspace
+# 1. package.json 里把 "link:..." 改回 "^0.7.5"
+# 2. 删 junction（只删链接，别动目标目录）
+# 3. plugin_manager install dsh-wsl-workspace
+# 4. 重启 DSH
 ```
 
-⚠️ 备份：`_profile-desktop-backup-<时间戳>-before-wsl-fork/`（`cordis.patch.yml`、`package.json`）
+⚠️ 备份：`_profile-desktop-backup-20261012-142340-before-wsl-fork/`（`cordis.patch.yml`、`package.json`）
+fork 源码仍在 `~/code/dsh-wsl-workspace` 与 `minimax_work\dsh-wsl-workspace-fork`，**没丢**。
 
 ### 别做过的无用功
 
@@ -226,8 +261,9 @@ dsh plugin --profile desktop install dsh-wsl-workspace
 **不走 Node 标准解析** —— 查文件系统必然得出错误结论。
 `js-yaml` 只是 `src/` 的 dev 依赖，编译后已内联，`lib/` 里根本 import 不到它。
 
-**权威信号是 `plugin_manager list_plugins` 的 `fiberPhase`**，加上
-`application` 三态：`applied`（已热加载）/ `restart-required`（要重启）/ `failed`。
+**也不要**只凭 `fiberPhase: active` + `application: restart-required` 就宣布装好了 ——
+本次正是这两个信号全绿、测试 36/36、端到端 61 skill 全对，**运行时却整个 WSL 打不开**。
+`restart-required` 的含义是**还没生效**，此时任何"装好了"的说法都是提前下结论。
 
 ## ⚠️ 外观插件教训：`skin-center` 已卸载（2026-10-12）
 
