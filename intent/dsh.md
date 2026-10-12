@@ -22,7 +22,7 @@ DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经�
 | `@deepseek-ai/dsh-web-app` | Web 界面层 | 必需 |
 | `dsh-our-free-model` | 免费模型接入 | ✅ 用 **npm 版**（`dsh-our-free-model@^2.1.0`）；本机已于 2026-10-12 从旧机 `file:` tgz 切到 npm |
 | `dsh-wsl-tool` | WSL 命令/路径/环境工具 | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor` |
-| `dsh-wsl-workspace` | 会话执行环境落地 WSL | 兼容 `0.2.0-rc.2` 已声明 |
+| `dsh-wsl-workspace` | 会话执行环境落地 WSL | ⚠️ **本地 fork 0.7.7**，见「WSL 用户级 skill fork」一节 |
 | `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | |
 | `dsh-whale-girl-pet` | 鲸鱼娘桌宠 | ⚠️ 见下方「桌宠脆弱性」。**独立插件，不依赖皮肤中心** |
 | `dsh-theme-studio` | 主题/配色 | 12 预设 + 深色对比度守护（亮度 < 0.18 自动提亮）。见「外观插件教训」 |
@@ -158,6 +158,76 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 | `dsh-theme-whalegirl` | **独占式**：`colorScheme` 只有 light 一套 + 监听 `theme/change` 无条件回弹。导致暗色看不清、切换被劫持。**已卸载** |
 | `dsh-plugin-ops-bundle` | 37 条警告全属误报（见下）。**已卸载** |
 | `@linxin666/dsh-web-all` | 内含 skin-center，**与已装的重复挂载**会报错 |
+
+## WSL 用户级 skill fork（2026-10-12）
+
+### 问题
+
+WSL 里有 **61 个 skill**，但 DSH 开 WSL 会话时**只加载 5 个**（4 内置 + tabbit）：
+
+```
+/home/caixuf/.claude/skills/            ← 61 个（真实目录）
+/home/caixuf/.agents/skills -> .claude/skills   ← 符号链接
+```
+
+**根因**：官方 `dsh-wsl-workspace` 的 `src/host/wsl-skills.ts` **只扫项目级**
+（`<项目>/.dsh/skills`、`<项目>/.agents/skills`），**从不扫 WSL 用户级 `~/.agents/skills`**。
+
+### 改动
+
+仓库 `~/code/dsh-wsl-workspace`，分支 `feat/wsl-user-level-skills`，提交 `aa007c2`：
+
+| 项 | 内容 |
+|---|---|
+| `src/host/wsl-skills.ts` | +176 行 |
+| `lib/index.js` | +150 行（S4：`lib/` 必须与 `src/` 一致） |
+| `tests/wsl-skills.test.ts` | +86 行，Windows 侧 36/36 通过 |
+
+- `USER_DSH_RANK=400` / `USER_AGENTS_RANK=500`（对齐 DSH 官方 5 级优先级）
+- `resolveDistributionHome()` —— 经 `wsl.exe printenv HOME` 取真实 home
+- `discoverUserSkillRoots()` —— **带符号链接回退**（本机 `~/.agents/skills` 就是链接）
+- `discoverAllSkillRoots()` —— 合并项目级 + 用户级
+
+端到端实测：真实路径发现 **61 个 skill，source 标 `user-agents`**。
+
+### ⚠️ 安装路径的三个坑（我都踩了）
+
+**只有第 3 条可行**：
+
+| 尝试 | 结果 | 原因 |
+|---|---|---|
+| `link:~/code/dsh-wsl-workspace` | ❌ `application: failed` | `~` 被解析成 `C:\Users\20247\code\...`，**目录不存在** |
+| `link:\\wsl.localhost\Ubuntu-24.04\...` | ❌ `application: failed` | 反斜杠被吃成 `C:\wsl.localhost\...` → 坏 junction |
+| **`link:` Windows 工作区副本** | ✅ `restart-required` | 先把 fork 复制到 Windows 可访问路径 |
+
+**运行中的安装方式**：
+
+```
+node_modules\dsh-wsl-workspace  ──junction──>  C:\Users\20247\Downloads\minimax_work\dsh-wsl-workspace-fork
+package.json:  "dsh-wsl-workspace": "link:C:/Users/20247/Downloads/minimax_work/dsh-wsl-workspace-fork"
+```
+
+WSL 侧原仓 `~/code/dsh-wsl-workspace` 保留为 git 源；**改代码要在 Windows 副本改完，
+再同步回 WSL 仓提交**（两边不是同一个目录）。
+
+### 回滚方式
+
+```bash
+# 删 package.json 里的 link 登记 + 断掉 junction，然后装回官方版
+dsh plugin --profile desktop install dsh-wsl-workspace
+```
+
+⚠️ 备份：`_profile-desktop-backup-<时间戳>-before-wsl-fork/`（`cordis.patch.yml`、`package.json`）
+
+### 别做过的无用功
+
+**不要**试图在文件系统层验证 `lib/` 的依赖解析。
+`lib/` 只 import `@deepseek-ai/*`（peer，DSH 自己的 ModuleLoader 注入）+ Node 内置，
+**不走 Node 标准解析** —— 查文件系统必然得出错误结论。
+`js-yaml` 只是 `src/` 的 dev 依赖，编译后已内联，`lib/` 里根本 import 不到它。
+
+**权威信号是 `plugin_manager list_plugins` 的 `fiberPhase`**，加上
+`application` 三态：`applied`（已热加载）/ `restart-required`（要重启）/ `failed`。
 
 ## ⚠️ 外观插件教训：`skin-center` 已卸载（2026-10-12）
 
