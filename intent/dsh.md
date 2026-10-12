@@ -521,9 +521,18 @@ cp templates/dsh/pnpm-workspace.yaml  ~/.dsh/profiles/desktop/pnpm-workspace.yam
 #    📌 历史：旧机曾用 file: 指向私存 tgz（dsh-plugin-packages/*.tgz），
 #       那条已废弃 —— 若你在旧备份里见到 file: 引用，那是残留，不要照抄。
 
-# 4. 逐个装 bundle（不要指望一条 install 全搞定，见下方「假失败」）
-#    Desktop 版最省事的是直接用 DSH 的 plugin_manager 工具逐个 install_bundle
-dsh plugin --profile desktop install
+# 4. 装全部 bundle —— 一条命令（PowerShell，见 README 第 4 步）
+#    ✅ scripts\install-dsh.ps1 会自动逐个 add，并核对是否真的落盘。
+#    ⚠️ 必须在 **PowerShell** 里跑；dsh 是 Windows 程序，在 WSL/bash 里调会炸。
+powershell -ExecutionPolicy Bypass -File scripts/install-dsh.ps1 -Profile desktop
+#
+#    📌 为什么不用 plugin_manager 逐个 install_bundle：
+#       `dsh plugin --profile <p> add <pkg>` 一条命令干三件事 ——
+#       ① profile 不存在则自动初始化 ② pnpm 装包（版本自动解析成最新版）
+#       ③ 自动写进 dsh.profile.bundles
+#       所以整套装机 = 对模板 dependencies 逐个 add，快一个数量级且可脚本化。
+#       （本文件早期版本写「必须用 plugin_manager 逐个装」是误判：
+#         当时那次失败的真因是无效 link: 路径，不是命令选错。）
 ```
 
 ### `dsh-our-free-model` 的取法（换机必读）

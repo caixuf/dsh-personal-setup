@@ -192,13 +192,20 @@ do_dsh() {
         say "已复制 $f"
     done
 
-    hr "下一步（install 请在 DSH 里用 plugin_manager 逐个装）=="
-    say "1. 启动 DSH Desktop 一次（生成 profile 目录）"
-    say "2. 逐个 install_bundle，**不要**用 'dsh plugin install' 一把梭："
-    say "     判定与修复见 intent/dsh.md 的「两种假失败」"
-    say "3. 每次 install/remove 后跑桌宠完整性自检（intent/dsh.md 同节）"
-    say "4. 装完用 plugin_manager list_plugins 确认全部 fiberPhase: active"
-    say "   ⚠️ active ≠ 能用（内置 Tabbit、skin-center 都栽过），必须实测功能"
+    hr "下一步 = 装 bundle（一条命令）=="
+    say "在 **PowerShell** 里跑（dsh 是 Windows 程序，不能在 WSL/bash 里跑）："
+    say "  cd \$(cygpath -u '$REPO' 2>/dev/null || pwd)"
+    say "  powershell -ExecutionPolicy Bypass -File scripts/install-dsh.ps1 -Profile desktop"
+    say ""
+    say "它会：备份 profile → 对模板 dependencies 逐个 dsh add"
+    say "     （add 自动装包 + 自动登记 bundles）→ 报告成败 → 打印下一步。"
+    say ""
+    say "先看要装什么而不真装：加 -DryRun"
+    say ""
+    say "⚠️ 若脚本不可用，退路是在 DSH 里用 plugin_manager 逐个 install_bundle。"
+    say "   判定与假失败修复见 intent/dsh.md"
+    say ""
+    say "⚠️ active ≠ 能用（内置 Tabbit、skin-center 都栽过），必须实测功能"
 }
 
 do_dotfiles() {

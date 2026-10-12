@@ -31,11 +31,17 @@ templates/              ← 【是什么】可直接复制、不含密钥
 forks/                  ← 【例外】本机 fork 的第三方源码（仅源码，不含构建产物）
   dsh-wsl-workspace/    WSL 用户级 skill 补丁（基线 0.7.5）；说明见其 README.fork.md
 scripts/
-  audit.sh              盘点**当前机**实际状态，供 AI 与新机对比
-  audit-dsh-drift.sh    ★ 审计「仓库模板 vs 本机实机」的 DSH 配置 drift
-  apply.sh              幂等落地（默认 --check 只读；--dsh 落 DSH profile）
+  audit.sh              盘点**当前机**实际状态，供 AI 与新机对比（WSL 侧）
+  audit-dsh-drift.sh    ★ 审计「仓库模板 vs 本机实机」的 DSH 配置 drift（WSL 侧）
+  apply.sh              幂等落地（默认 --check；--dsh 落 DSH 配置三件）（WSL 侧）
+  install-dsh.ps1       🔴 **一键装全部 bundle**（PowerShell，dsh 是 Windows 程序）
   check-secrets.sh      提交前密钥扫描（⚠️ 手动跑，无 CI 强制）
 ```
+
+> 🔴 **脚本分两个宿主跑**：
+> - `apply.sh` / `audit.sh` / `audit-dsh-drift.sh` 在 **WSL**（管 dotfile、systemd、drift 审计）
+> - `install-dsh.ps1` 在 **PowerShell**（管 DSH bundle 安装）
+> 混用会炸 —— 在 bash 里调 `dsh.cmd` 会报 `@echo: command not found`。
 
 > 🔍 **`audit-dsh-drift.sh` 是防「文档与实机脱节」的常规武器。**
 > 本仓已两次出现「文档写的插件实机没有 / 实机有的文档没记」（见 `intent/dsh.md`
@@ -74,19 +80,27 @@ bash scripts/apply.sh --dsh
 它会：备份旧配置 → 复制三件（`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`）
 → **在覆盖前**做机器绑定项自检 → 打印下一步。
 
-> ⚠️ **install 必须回 DSH 里用 `plugin_manager` 逐个 `install_bundle` 装**，
-> 脚本不代跑 —— 桌面版 install 有「假失败」判定逻辑（包已落盘只差登记），
-> 脚本代跑会绕过它，反而更难排查。
+### 第 4 步：装全部 bundle（`install-dsh.ps1`）
 
-**`link:` 依赖是跨机同步的头号杀手。** 如果 `package.json` 里有
-`"xxx": "link:C:/Users/<某人>/..."` 而那是**别人的机器**，`install` 会报
-`cannot resolve profile bundle "xxx"` 并**整装失败**。
-`--dsh` 会在覆盖前把这两种情况都点出来：
+```powershell
+# 在 PowerShell 里跑（dsh 是 Windows 程序，不能在 WSL/bash 里跑）
+.\scripts\install-dsh.ps1                    # 装到 desktop
+.\scripts\install-dsh.ps1 -DryRun            # 只列清单，不真装
+```
 
-- 模板里出现了 `link:` → 模板 bug（不该绑机器）
-- 你的现有配置里有 `link:` → **即将被覆盖**，配了 fork 的话会退回官方版
+**这是「一键部署」的核心。** 实测 13 个 bundle 约十几秒装完，
+`dependencies` 与 `dsh.profile.bundles` 自动对齐 —— **不需要在 DSH 里逐个点**。
 
-### 第 4 步：按 intent 逐项落地其余部分
+> **为什么能一条命令搞定**（2026-10-12 实测）：
+> `dsh plugin --profile <p> add <pkg>` 一条命令干三件事 ——
+> ① profile 不存在则自动初始化 ② pnpm 装包（版本自动解析成最新版）
+> ③ 自动把包名写进 `dsh.profile.bundles`。
+> 所以整套装机 = 对模板 `dependencies` 里每个非 `link:`/`file:` 包跑一次 `add`。
+>
+> ⚠️ 早先文档写「必须用 plugin_manager 逐个 install_bundle」是**误判** ——
+> 那次失败的真因是 `package.json` 里写了无效的 `link:` 路径，**不是命令选错**。
+
+### 第 5 步：按 intent 逐项落地其余部分
 
 按 `intent/` 各文件的「安装步骤」小节执行。关键原则：
 
@@ -94,12 +108,18 @@ bash scripts/apply.sh --dsh
   **绝不要整份替换**新机的 `.bashrc`（新机可能有自己的内容）
 - **路径要适配**：模板里的 `/home/caixuf/` 需替换为新机实际 `$HOME`
 - **密钥要手填**：见 `intent/secrets.md`，AI **不应**尝试自动获取或生成密钥
-- **别被 `plugin_manager` 的「假失败」骗**：报 `failed` 或超时时，包往往**已完整落盘**、
-  只差清单登记。判定与修复见 `intent/dsh.md` 的「两种假失败」
 - **free-model 走 npm**（模板已是 `^2.1.0`）；若见到 `file:` 引用那是旧机残留，别照抄
 - **WSL fork 是选装**，不在模板默认清单里 —— 见下方「WSL fork」节
 
-### 第 5 步：验证
+### 第 6 步：验证
+
+### 三条最容易踩的坑
+
+| 坑 | 症状 | 解法 |
+|---|---|---|
+| **在 bash/WSL 里调 `dsh.cmd`** | `@echo: command not found`，**且退出码仍是 0** | 用 PowerShell 跑 `install-dsh.ps1`；别自己写 bash 版 |
+| **`link:` 路径照抄别人的** | `cannot resolve profile bundle` → **整装失败** | 模板已不含 `link:`；脚本在覆盖前会点出来 |
+| **`$ErrorActionPreference='Stop'` + dsh 写 stderr** | 初始化 profile 时的正常提示被当**致命错误**抛出，第一个包就中断 | 脚本内已把该段临时降级为 `Continue` |
 
 每项落地后按该 intent 文件末尾的「验证」小节自检，不要一次性全做完再验证。
 
