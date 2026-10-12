@@ -19,7 +19,7 @@ DSH 桌面端的插件组合与外观配置。共 **12 个 bundle**，全部经�
 |---|---|---|
 | `@deepseek-ai/dsh-base` | 官方核心 | 必需 |
 | `@deepseek-ai/dsh-web-app` | Web 界面层 | 必需 |
-| `dsh-our-free-model` | 免费模型接入 | ✅ **npm 上也有**（`dsh-our-free-model@2.0.0`）；模板里那条 `file:` tgz 只是旧机私存副本，新机直接用 npm 版 |
+| `dsh-our-free-model` | 免费模型接入 | ✅ 用 **npm 版**（`dsh-our-free-model@^2.1.0`）；本机已于 2026-10-12 从旧机 `file:` tgz 切到 npm |
 | `dsh-wsl-tool` | WSL 命令/路径/环境工具 | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor` |
 | `dsh-wsl-workspace` | 会话执行环境落地 WSL | 兼容 `0.2.0-rc.2` 已声明 |
 | `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | |
@@ -96,9 +96,10 @@ cp templates/dsh/cordis.patch.yml   ~/.dsh/profiles/desktop/cordis.patch.yml
 #    模板那条：
 #      "dsh-our-free-model": "file:C:/Users/20247/dsh-plugin-packages/dsh-our-free-model-2.0.0.tgz"
 #    指向旧机的私存 tgz —— 新机**没有这个文件**，照抄会让整个 install 失败。
-#    ✅ 正解：改用 npm 版（同一个包，同一个 2.0.0）
-#      "dsh-our-free-model": "^2.0.0"
-#    （2026-10-10 实测：npm 上有作者正式发布的 2.0.0，peer 窗口 ^0.2.0-rc.1 正好匹配 0.2.0-rc.2）
+#    ✅ 正解：改用 npm 版（同一个包，现在最新 2.1.0）
+#      "dsh-our-free-model": "^2.1.0"
+#    （2026-10-10 实测：npm 上有作者正式发布的 2.0.0，peer 窗口 ^0.2.0-rc.1 正好匹配 0.2.0-rc.2；
+#      2026-10-12 本机已升到 2.1.0，peer 窗口不变，仍兼容）
 
 # 4. 逐个装 bundle（不要指望一条 install 全搞定，见下方「假失败」）
 #    Desktop 版最省事的是直接用 DSH 的 plugin_manager 工具逐个 install_bundle
@@ -109,11 +110,39 @@ dsh plugin --profile desktop install
 
 | 途径 | 说明 |
 |---|---|
-| **npm（推荐）** | `dsh-our-free-model@^2.0.0`，公开 registry，无需 tgz |
+| **npm（推荐）** | `dsh-our-free-model@^2.1.0`，公开 registry，无需 tgz |
 | 旧机 tgz | `C:\Users\20247\dsh-plugin-packages\dsh-our-free-model-2.0.0.tgz`，**不在 `~/.dsh` 内，迁移易漏**；本仓库不含它 |
 
 两者是同一个包（维护者 `fish-under-sea`，`dsh.bundle.patch` 指向自带 `cordis.patch.yml`）。
 **优先 npm 版** —— 否则新机一定卡住。
+
+### 版本现状（2026-10-12 更新）
+
+本机已从 `file:` tgz（2.0.0）**切到 npm 版 2.1.0**。
+
+**为什么必须切**：`file:` 引用锁死在 tgz 里的版本，**无法通过改版本号升级**。
+要拿 2.1.0 就必须改成 npm registry 引用 —— 这同时消除了「绝对路径 + 新机易漏」两个迁移隐患。
+
+**升级实测（一次成功）**：
+
+1. 改 `package.json`：`file:...2.0.0.tgz` → `"^2.1.0"`
+2. `plugin_manager install_bundle dsh-our-free-model`
+   → `exitCode 0`、`added 1, done in 2.8s`、`application: restart-required`（需重启生效，非失败）
+3. 桌宠体检 **70/70、51/51、4/4 分毫未动**（因走 `plugin_manager` 而非裸 `pnpm install`，
+   避开了「rename 包目录 → `assets/` 被占 → EPERM」那条路径）
+
+### ⚠️ pnpm 会自动写入 `minimumReleaseAgeExclude`
+
+安装 24 小时内发布的新版本时，pnpm 的供应链防护（`minimumReleaseAge`，默认 1440 分钟）本会拦截。
+因是显式安装，pnpm 自动在 `pnpm-workspace.yaml` 记一条：
+
+```yaml
+minimumReleaseAgeExclude:
+  - dsh-our-free-model@2.1.0
+```
+
+**这是正常的**，只豁免这一条，不影响其它包的防护。**不要手动删它** —— 删了下次会被重新拦，
+或者反过来手工添加会绕过防护。
 
 ## 验证
 
