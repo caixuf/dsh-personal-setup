@@ -277,6 +277,19 @@ README 明确：浏览器半边从 **`<dsh-home>\node_modules\dsh-bot-gateway\`*
 **本机做法**：`plugin_manager install_bundle` 只装到 `profiles/desktop/node_modules/`，
 **需再复制一份到 `~/.dsh/node_modules/dsh-bot-gateway/`** 才能被机器级 patch 解析到。
 
+### ✅ 这两件事 `install-dsh.ps1` 已自动做（2026-10-12 补）
+
+上面两小节说的都是**手工步骤**，换机最容易漏。现已进 `scripts/install-dsh.ps1`：
+装完 15 个包之后自动
+
+1. 把 `templates/dsh/cordis.machine-patch.yml` 复制到 `<dsh-home>/cordis.patch.yml`
+   （已存在则先备份），并
+2. 把 `dsh-bot-gateway` 复制到 `<dsh-home>/node_modules/dsh-bot-gateway/`
+
+**只有 `dsh-bot-gateway` 需要这一步** —— 其余 14 个包都是正常 bundle（有 `dsh.bundle.patch`），
+`dsh add` 一次就搞定。判定法：包 `package.json` 有 `dsh.bundle` → 进 `bundles`；
+只有 `dsh.client` → 宿主插件，走机器级。
+
 ### ⚠️ `install_bundle` 会报 `not-bundle` —— 不是失败
 
 本插件是**宿主插件**（`main: ./index.mjs` + `dsh.client` 注入），**没有** `dsh.bundle.patch`，

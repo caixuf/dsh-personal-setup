@@ -125,6 +125,52 @@ if ($failed.Count -gt 0) {
     exit 1
 }
 
+# ===================================================================
+# 机器级补丁层：dsh-bot-gateway 等宿主插件挂在这里，不在 profile 里
+# ===================================================================
+# 为什么必须单独处理（README 原文警告）：
+#   DSH Desktop 后端启动失败时会把整个 profiles/ 目录隔离成
+#   profiles.broken-<ts> 并重建 —— profile 级补丁会随之丢失；
+#   <dsh-home>/cordis.patch.yml（机器级）不受影响，重启后始终生效。
+#
+# 所以宿主插件要两件事，缺一不可：
+#   1) <dsh-home>/cordis.patch.yml 里要有那一行
+#   2) <dsh-home>/node_modules/<包>/ 要有一份副本
+#      —— 浏览器半边按 <dsh-home>/node_modules/<包>/package.json 解析，
+#         只装在 profiles/<name>/node_modules/ 它找不到
+Hdr '机器级补丁层（宿主插件）'
+
+$dshHome = Split-Path (Split-Path $profileDir -Parent) -Parent
+$machinePatchTpl = Join-Path $Repo 'templates/dsh/cordis.machine-patch.yml'
+$machinePatchDst = Join-Path $dshHome 'cordis.patch.yml'
+$stamp2 = Get-Date -Format 'yyyyMMdd-HHmmss'
+
+if (Test-Path $machinePatchTpl) {
+    if (Test-Path $machinePatchDst) {
+        Copy-Item $machinePatchDst "$machinePatchDst.bak-$stamp2"
+        Say "已备份现有 $machinePatchDst"
+    }
+    Copy-Item $machinePatchTpl $machinePatchDst
+    Say "✓ 已安装 $machinePatchDst"
+} else {
+    Warn "模板缺失，跳过机器级 patch: $machinePatchTpl"
+}
+
+# 宿主插件（无 dsh.bundle.patch，挂机器级而非 profile）需要机器级 node_modules 副本
+$hostPlugins = @('dsh-bot-gateway')
+foreach ($hp in $hostPlugins) {
+    $src = Join-Path $profileDir "node_modules/$hp"
+    $dst = Join-Path $dshHome "node_modules/$hp"
+    if (-not (Test-Path $src)) { Warn "未装 $hp（profile node_modules 里没有），跳过副本"; continue }
+    if (Test-Path $dst) { Say "已存在，保留: $dst"; continue }
+    New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
+    Copy-Item $src $dst -Recurse -Force
+    $n = (Get-ChildItem $dst -Recurse -File -Force -EA SilentlyContinue | Measure-Object).Count
+    Say "✓ 已复制 $hp → $dst（$n 个文件）"
+}
+Say ''
+Say '机器级插件的设置在 DSH 内「机器人网关」分区完成（NapCat 扫码、账号登录等）。'
+
 Hdr '下一步'
 Say '1. **重启 DSH Desktop** —— 新 bundle 需重启才加载'
 Say '2. 桌宠完整性自检（intent\dsh.md，期望 70/51/4）'
