@@ -1,0 +1,39 @@
+# frpc 客户端配置模板 —— Windows 家用机器（DSH 公网访问）
+#
+# 用途：把家里电脑上的 DSH（127.0.0.1:19387）通过 FRP 隧道暴露到公网 VPS，
+#       让手机在外面能连上。这份配置配合 VPS 上的 Caddy 反代使用。
+#
+# 安装步骤（换机器时照做）：
+#   1) 从 <dsh-home>/dsh-mobile-gateway/ 或腾讯云 frp 官方下载 frpc.exe，
+#      放到任意目录（模板默认放在 ~/Downloads/android-toolchain/）。
+#   2) 把本文件复制为 frpc.toml，与 frpc.exe 放同一目录。
+#   3) 填入三处占位符（见下）。
+#   4) 运行：.\frpc.exe -c .\frpc.toml
+#      建议注册成计划任务/服务开机自启（intent\services.md 有 systemd 示例）。
+#
+# ⚠️ 安全纪律：
+#   - token 是**唯一**的凭据，绝不提交进 git（本模板用占位符）；
+#   - remotePort 必须是 VPS 上 frps 监听且**只绑回环**的端口，
+#     公网侧由 Caddy 反代并做路径白名单 —— 详见 docs\public-access.md；
+#   - localIP 永远是 127.0.0.1（DSH 只监听本机），不要改成局域网 IP。
+
+serverAddr = "<YOUR_VPS_PUBLIC_IP>"   # ← 填 VPS 公网 IP
+serverPort = 7000                      # ← 与 VPS 上 frps 的 bindPort 一致
+
+auth.method = "token"
+auth.token = "<YOUR_FRPC_TOKEN>"      # ← 与 VPS 上 frps 的 token 一致
+
+transport.tls.enable = true
+# 弱网环境可开压缩（DSH 流量以文本 JSON 为主，压缩比可观）
+# transport.useEncryption = true
+
+log.to = "console"
+log.level = "info"
+
+[[proxies]]
+# 名字决定 VPS 侧 Caddy 反代与防火墙规则的辨识度，别随意改
+name = "dsh-mobile-tcp"
+type = "tcp"
+localIP = "127.0.0.1"                 # ← 固定 127.0.0.1，不要改
+localPort = 19387                     # ← DSH webserver 端口
+remotePort = 2443                     # ← VPS 上 frps 的远端端口；**必须只绑 127.0.0.1**

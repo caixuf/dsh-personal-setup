@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     按仓库模板把 DSH profile 的 bundle 全部装上。
 
@@ -60,8 +60,13 @@ Say "模板    : templates\dsh\package.json"
 if ($DryRun) { Say '模式    : -DryRun（不真装）' }
 
 # --- 备份现有 profile ---
+# ⚠️ DryRun 必须是**纯只读**：之前这里没判 $DryRun，
+# 于是「只想看看会装什么」也会往 TEMP 里拷一整份 profile（几十 MB），
+# 跑几次就把 TEMP 塞满了。审计新机器时 DryRun 会跑很多次，这个必须改。
 $profileDir = Join-Path $env:USERPROFILE ".dsh\profiles\$Profile"
-if (-not $SkipBackup -and (Test-Path $profileDir)) {
+if ($DryRun) {
+    Say "DryRun：跳过 profile 备份（不写任何文件）"
+} elseif (-not $SkipBackup -and (Test-Path $profileDir)) {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $bak = Join-Path $env:TEMP "dsh-profile-$Profile-$stamp"
     Copy-Item $profileDir $bak -Recurse -Force
@@ -72,9 +77,32 @@ if (-not $SkipBackup -and (Test-Path $profileDir)) {
 $tpl = Get-Content $Template -Raw | ConvertFrom-Json
 $deps = @($tpl.dependencies.PSObject.Properties)
 
-Hdr '将安装的 bundle'
-$toInstall = @(); $skip = 0
+# 自研宿主插件映射（未发 npm，支持同级或工作区源码自动发现与双向同步）
+$localSourceMap = @{
+    'dsh-mobile-gateway' = @(
+        (Join-Path $Repo '..\dsh-native-mobile\packages\dsh-mobile-gateway'),
+        (Join-Path $env:USERPROFILE 'Downloads\aiwork\dsh-native-mobile\packages\dsh-mobile-gateway')
+    )
+    'dsh-rea' = @(
+        (Join-Path $Repo '..\dsh-rea'),
+        (Join-Path $env:USERPROFILE 'Downloads\aiwork\dsh-rea')
+    )
+}
+
+Hdr '将安装的 bundle 与插件'
+$toInstall = @(); $localInstall = @(); $skip = 0
 foreach ($d in $deps) {
+    if ($localSourceMap.ContainsKey($d.Name)) {
+        $foundSrc = $localSourceMap[$d.Name] | Where-Object { Test-Path $_ } | Select-Object -First 1
+        if ($foundSrc) {
+            Say "  ★ $($d.Name) (自研宿主插件，将从本地源码安装: $foundSrc)"
+            $localInstall += @{ Name = $d.Name; Source = $foundSrc }
+            continue
+        } else {
+            Warn "$($d.Name) 未在本地找到源码，若未发布 npm 可能会拉取失败"
+        }
+    }
+
     if ($d.Value -match '^(link|file):') {
         Say "跳过（机器相关，需人工）: $($d.Name)"
         $skip++
@@ -84,13 +112,13 @@ foreach ($d in $deps) {
     }
 }
 Say ''
-Say "共 $($toInstall.Count) 个待装，跳过 $skip 个机器相关依赖"
-if ($toInstall.Count -eq 0) { throw '没有可安装的包 —— 模板 dependencies 是空的？' }
+Say "共 $($toInstall.Count) 个公共 npm 包待装，$($localInstall.Count) 个本地插件待装，跳过 $skip 个机器相关依赖"
+if ($toInstall.Count -eq 0 -and $localInstall.Count -eq 0) { throw '没有可安装的包 —— 模板 dependencies 是空的？' }
 
 if ($DryRun) { Hdr 'DryRun，未执行任何安装'; exit 0 }
 
-# --- 逐个 add ---
-Hdr '安装中'
+# --- 逐个 add 公共 npm 包 ---
+Hdr '安装公共 npm bundle'
 $ok = 0; $failed = @()
 
 # 🔴 两个坑（2026-10-12 实测踩到）：
@@ -156,10 +184,83 @@ if (Test-Path $machinePatchTpl) {
     Warn "模板缺失，跳过机器级 patch: $machinePatchTpl"
 }
 
+# ===================================================================
+# 自研宿主插件安装（本地源码，不经 npm）
+# ===================================================================
+# 🔴 为什么必须走这条路（2026-10-13 换机审计发现的真实阻断点）：
+#
+#   `dsh-mobile-gateway` 与 `dsh-rea` **都没有发布到公共 npm**。
+#   如果直接 `dsh plugin add dsh-mobile-gateway`，pnpm 会去 registry 找，
+#   得到 `404 Not Found` —— 换一台干净电脑就会在这里卡死。
+#
+#   而且它们是**宿主插件**（package.json 里没有 `dsh.bundle.patch`），
+#   即使装上了，`dsh plugin add` 也会返回 `error.code: not-bundle`
+#   （这是形态差异，不是失败，见 intent\dsh.md）。
+#
+#   所以正确做法（与 dsh-native-mobile/scripts/install-gateway.ps1 同源）：
+#     1) 把源码复制到 **两个** node_modules（profile + 机器级），缺一个 fiber 就 failed；
+#     2) 用 DSH 自带的 pnpm 在**机器级**那份装运行时依赖（ws / qrcode）；
+#     3) 把依赖树复制到 profile 那份，避免两份 lockfile 不一致。
+if ($localInstall.Count -gt 0) {
+    Hdr '安装自研宿主插件（本地源码）'
+
+    $node = $null
+    $pnpm = $null
+    $runtimeCandidates = @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness\resources\runtime')
+    )
+    foreach ($rt in $runtimeCandidates) {
+        $n = Join-Path $rt 'primary-runtime\dependencies\node\bin\node.exe'
+        $p = Join-Path $rt 'pnpm\bin\pnpm.cjs'
+        if ((Test-Path $n) -and (Test-Path $p)) { $node = $n; $pnpm = $p; break }
+    }
+    if (-not $node) {
+        $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+        if ($nodeCmd) { $node = $nodeCmd.Source }
+    }
+
+    foreach ($lp in $localInstall) {
+        $name = $lp.Name
+        $src  = $lp.Source
+        $machineTarget = Join-Path $dshHome "node_modules/$name"
+        $profileTarget = Join-Path $profileDir "node_modules/$name"
+
+        Write-Host ("  {0,-22} " -f $name) -NoNewline
+        foreach ($t in @($machineTarget, $profileTarget)) {
+            New-Item -ItemType Directory -Path (Split-Path $t -Parent) -Force | Out-Null
+            if (Test-Path $t) { Remove-Item $t -Recurse -Force }
+            New-Item -ItemType Directory -Path $t -Force | Out-Null
+            Copy-Item -Path (Join-Path $src '*') -Destination $t -Recurse -Force `
+                -Exclude 'node_modules', 'test', '.git' -ErrorAction SilentlyContinue
+        }
+        Write-Host '✓'
+
+        # 运行时依赖装在机器级那份（DSH 浏览器半边按这个路径解析）
+        if ($node -and $pnpm) {
+            & $node $pnpm install --dir $machineTarget --ignore-workspace `
+                --node-linker=hoisted --prod --ignore-scripts 2>&1 | Out-Null
+            if (Test-Path (Join-Path $machineTarget 'node_modules')) {
+                Copy-Item -Path (Join-Path $machineTarget 'node_modules') `
+                    -Destination $profileTarget -Recurse -Force -ErrorAction SilentlyContinue
+                Say "  ✓ $name 运行时依赖已安装并同步"
+            }
+        } else {
+            Warn "  ⚠️ 找不到 DSH 自带 node/pnpm，$name 的运行时依赖未安装（需手工处理）"
+        }
+    }
+} else {
+    Hdr '安装自研宿主插件（本地源码）'
+    Warn '未找到 dsh-mobile-gateway / dsh-rea 的本地源码，跳过'
+    Warn '如需这两个插件，请先 clone：'
+    Warn '  git clone https://github.com/caixuf/dsh-native-mobile.git'
+    Warn '  git clone https://github.com/caixuf/dsh-rea.git'
+    Warn '然后重跑本脚本（源码放在同级目录或 Downloads\aiwork\ 下即可自动发现）'
+}
+
 # 宿主插件（无 dsh.bundle.patch，挂机器级而非 profile）需要机器级 node_modules 副本。
 # 判据：包的 package.json 有 dsh.client 但没有 dsh.bundle。
-# 挂载宿主插件：dsh-bot-gateway、dsh-mobile-gateway、dsh-rea。
-$hostPlugins = @('dsh-bot-gateway', 'dsh-mobile-gateway', 'dsh-rea')
+# 挂载宿主插件：dsh-bot-gateway（npm）+ 上面已本地安装的自研插件。
+$hostPlugins = @('dsh-bot-gateway')
 foreach ($hp in $hostPlugins) {
     $src = Join-Path $profileDir "node_modules/$hp"
     $dst = Join-Path $dshHome "node_modules/$hp"
