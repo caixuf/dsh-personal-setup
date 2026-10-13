@@ -382,6 +382,21 @@ Get-Content "$env:USERPROFILE\.dsh\bot-gateway\boot.log"
 > 只用 Telegram 完全不会触发。卸载时记得
 > `wsl --unregister napcat-dsh-builder`（会连带删掉那个 vhdx）。
 
+## ✅ `dsh-mobile-gateway`（原生 Android 移动端网关，2026-10-13 落地）
+
+- **所属项目**：自研开源项目 `dsh-native-mobile`（[github.com/caixuf/dsh-native-mobile](https://github.com/caixuf/dsh-native-mobile)）
+- **定位**：为 Kotlin/Compose 原生 Android 客户端提供进程内鉴权通道与 RPC/事件桥。
+- **形态**：宿主插件（与 `dsh-bot-gateway` 相同，必须挂载在 `<dsh-home>/cordis.patch.yml` 机器级补丁，两份 node_modules 副本）。
+
+### 架构与核心端口
+```
+手机 App ──HTTPS/WSS──▶ Caddy (:2444) ──▶ FRP 隧道 (:2443 仅回环) ──▶ DSH (:19387)
+```
+- **单一 Mux WebSocket**：`/mobile-gateway/remote.mux`，内部挂载 `$events` 逻辑流。
+- **应答端点**：审批/提问必须走 `$events/result`（不是 `/api/respond`，后者在宿主不存在）。
+- **回环闸门**：管理面板 `/mobile-gateway/manage` 严格限回环 IP 访问（防公网渗透）。特权方法名单（全盘文件读取、设置修改、插件装卸）硬拦截。
+
+
 ### ✅ 推荐先用 Telegram（唯一不需要公网 IP 的通道）
 
 | 通道 | 公网 IP | 凭证门槛 |

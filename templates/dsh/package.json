@@ -10,6 +10,7 @@
     "dsh-bot-gateway": "^0.3.9-beta",
     "dsh-browser-cdp": "^0.18.19",
     "dsh-mnemon": "^0.5.25",
+    "dsh-mobile-gateway": "^0.1.0",
     "dsh-our-free-model": "^2.1.0",
     "dsh-terminal-panel": "^1.0.1",
     "dsh-theme-studio": "^0.6.3",

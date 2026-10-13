@@ -7,7 +7,7 @@
 #
 # 顶层必须是 YAML 数组；无条目时保留 []，纯注释（解析为 null）会导致启动失败。
 #
-# ── 当前挂载：dsh-bot-gateway ────────────────────────────────────
+# ── 当前挂载：dsh-bot-gateway & dsh-mobile-gateway ────────────────
 # 宿主插件（判据：package.json 有 dsh.client 但**没有** dsh.bundle），
 # 装它要两步，缺一不可：
 #   1) 本文件复制到 <dsh-home>/cordis.patch.yml（profile 目录**上一级**）
@@ -18,3 +18,9 @@
     - id: bot-gateway
       name: dsh-bot-gateway
       # 运行时数据默认落 $DSH_HOME/bot-gateway/；一般无需 config
+
+    - id: mobile-gateway
+      name: dsh-mobile-gateway
+      # DSH 原生移动端网关（dsh-native-mobile）
+      # 提供设备配对、单一 WebSocket Mux (/mobile-gateway/remote.mux)、
+      # $events 事件流与 $events/result 应答。管理面严格限制回环。

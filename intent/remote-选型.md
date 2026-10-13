@@ -90,3 +90,30 @@ GET /api/pair/status
 ```
 
 `lanAvailable:false` / `lanAddresses:[]` = 局域网开关没开。
+
+---
+
+## 2026-10-13 最新定型：自研原生移动端 dsh-native-mobile（终极方案）
+
+> 开源仓库：[github.com/caixuf/dsh-native-mobile](https://github.com/caixuf/dsh-native-mobile)
+> 本地工作区：`C:\Users\me\Downloads\aiwork\dsh-native-mobile`
+
+### 为什么从 Web UI 走向原生移动端
+`remote-web-ui` 解决了手机浏览器访问问题，但手机浏览器存在根本局限：
+1. 没有系统级通知与手势交互，无法提供沉浸式客户端体验。
+2. 缺乏安全的长期设备凭据存储机制（无法使用 Android Keystore / EncryptedSharedPreferences）。
+3. 依赖全量 Web 界面渲染，公网弱网环境下延迟高、开销大。
+
+### 架构与核心规范
+```
+Android App (Kotlin/Compose) ──HTTPS/WSS──▶ Caddy (公网白名单) ──▶ FRP 隧道 (2443 回环) ──▶ DSH 宿主网关 (19387)
+```
+1. **宿主插件 `dsh-mobile-gateway`**：
+   - 挂载在机器级 `cordis.patch.yml`（作为宿主插件，防止 profile 重建丢失）。
+   - 单一 WebSocket Mux 模式：`/mobile-gateway/remote.mux` 承载 `$events` 流与 RPC 转发。
+   - 安全模型：管理面 `/mobile-gateway/manage` 严格校验 `req.socket.remoteAddress` 仅限回环，特权方法（设置、文件系统全盘、插件管理）硬拦截。
+2. **原生 Android App**：
+   - Kotlin 2.0 + Jetpack Compose + Material 3。
+   - 对齐 DSH Web 客户端与 MiniMax 移动端设计语言，支持按电脑工作区（`cwd`）分组展示会话。
+   - 原生支持流式富文本与审批/提问卡片。
+
