@@ -74,7 +74,9 @@ if ($DryRun) {
 }
 
 # --- 读模板 dependencies ---
-$tpl = Get-Content $Template -Raw | ConvertFrom-Json
+# ⚠️ 必须显式 -Encoding UTF8：PS 5.1 默认按 ANSI 读 UTF-8 文件，
+# 中文会变乱码，且乱码里的替换字符会破坏 JSON 引号配对 → ConvertFrom-Json 直接报错。
+$tpl = Get-Content $Template -Raw -Encoding UTF8 | ConvertFrom-Json
 $deps = @($tpl.dependencies.PSObject.Properties)
 
 # 自研宿主插件映射（未发 npm，支持同级或工作区源码自动发现与双向同步）
@@ -136,7 +138,7 @@ foreach ($pkg in $toInstall) {
     $pf = Join-Path $profileDir 'package.json'
     $landed = $false
     if (Test-Path $pf) {
-        $landed = (Get-Content $pf -Raw | ConvertFrom-Json).dependencies.PSObject.Properties.Name -contains $pkg
+        $landed = (Get-Content $pf -Raw -Encoding UTF8 | ConvertFrom-Json).dependencies.PSObject.Properties.Name -contains $pkg
     }
     if ($landed) { Write-Host '✓'; $ok++ }
     else        { Write-Host '✗'; $failed += $pkg }
