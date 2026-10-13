@@ -396,6 +396,19 @@ Get-Content "$env:USERPROFILE\.dsh\bot-gateway\boot.log"
 - **应答端点**：审批/提问必须走 `$events/result`（不是 `/api/respond`，后者在宿主不存在）。
 - **回环闸门**：管理面板 `/mobile-gateway/manage` 严格限回环 IP 访问（防公网渗透）。特权方法名单（全盘文件读取、设置修改、插件装卸）硬拦截。
 
+## ✅ `dsh-rea`（REA 逆向工程助手插件，2026-10-13 落地）
+
+- **所属项目**：自研开源项目 `dsh-rea`（[github.com/caixuf/dsh-rea](https://github.com/caixuf/dsh-rea)）
+- **定位**：基于 [morluto/rea](https://github.com/morluto/rea) (17.7 万星) 封装的标准 DSH 插件。
+- **形态**：宿主插件，挂载在机器级 `<dsh-home>/cordis.patch.yml`。
+- **能力**：向 Agent 注入 `rea_*` 系列逆向工具：
+  - `rea_decode_android_resources`（apktool 资源与布局解码）
+  - `rea_inspect_android_package`（APK 清单与组件结构分析）
+  - `rea_search_android_classes` / `rea_inspect_android_class` / `rea_inspect_android_method`（反编译与符号分析）
+  - `rea_analyze_javascript_application` / `rea_analyze_web_bundle`（Web 与 Electron 静态逆向）
+  - `rea_inspect_native_instruction` / `rea_resolve_native_call_targets`（原生二进制分析）
+
+
 
 ### ✅ 推荐先用 Telegram（唯一不需要公网 IP 的通道）
 

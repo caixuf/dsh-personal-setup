@@ -158,8 +158,8 @@ if (Test-Path $machinePatchTpl) {
 
 # 宿主插件（无 dsh.bundle.patch，挂机器级而非 profile）需要机器级 node_modules 副本。
 # 判据：包的 package.json 有 dsh.client 但没有 dsh.bundle。
-# 挂载宿主插件：dsh-bot-gateway（无 peer 约束） & dsh-mobile-gateway（原生移动端网关）。
-$hostPlugins = @('dsh-bot-gateway', 'dsh-mobile-gateway')
+# 挂载宿主插件：dsh-bot-gateway、dsh-mobile-gateway、dsh-rea。
+$hostPlugins = @('dsh-bot-gateway', 'dsh-mobile-gateway', 'dsh-rea')
 foreach ($hp in $hostPlugins) {
     $src = Join-Path $profileDir "node_modules/$hp"
     $dst = Join-Path $dshHome "node_modules/$hp"
