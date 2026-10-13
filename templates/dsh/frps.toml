@@ -1,0 +1,39 @@
+# frps 服务端配置模板 —— 公网 VPS（DSH 移动端网关隧道）
+#
+# 用途：在**一台全新的 VPS** 上架设 frps，让家里电脑通过 FRP 把 DSH 暴露出来，
+#       再由 Caddy 做 TLS 终止 + 路径白名单。
+#
+# 安装位置：/etc/frp/frps.toml   （权限必须 600，token 在里面）
+# 服务定义：/etc/systemd/system/frps.service
+# 二进制：  /usr/local/bin/frps
+#
+# 🔴 安全设计的三个关键点（缺一个就出事）：
+#
+#   1. `allowPorts = [{ single = 2443 }]`
+#      只允许分配 2443 这一个远端端口。否则 frpc 客户端可以要求任意端口，
+#      等于把你的 VPS 变成一个开放代理。
+#
+#   2. `proxyBindAddr = "127.0.0.1"`
+#      **隧道端口只绑回环**，公网侧无法直接连 2443，只能经 Caddy 进。
+#      这一条比 allowPorts 更重要：它让 2443 在公网上"不存在"。
+#      配套：ufw 也不放行 2443（见 provision-vps.sh）。
+#
+#   3. `transport.tls.force = true`
+#      强制 frp 链路加密。否则 frpc↔frps 是明文，令牌会被嗅探。
+
+bindAddr = "0.0.0.0"
+bindPort = 7000                      # ← 与客户端 frpc.toml 的 serverPort 一致
+
+# 只允许这一个隧道端口（其余一律拒绝）
+allowPorts = [{ single = 2443 }]
+
+# 隧道端口只监听回环 —— 公网侧不可达
+proxyBindAddr = "127.0.0.1"
+
+auth.method = "token"
+auth.token = "<YOUR_FRPC_TOKEN>"      # ← 与客户端一致；生成：openssl rand -base64 32
+
+transport.tls.force = true
+
+log.to = "/var/log/frps.log"
+log.level = "info"

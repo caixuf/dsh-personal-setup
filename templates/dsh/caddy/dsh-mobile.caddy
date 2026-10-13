@@ -1,0 +1,71 @@
+# DSH 移动端网关的 Caddy 站点配置
+#
+# 安装位置：/etc/caddy/acli.d/sites/dsh-mobile.caddy
+# 生效方式：写好后 `caddy validate` → `systemctl reload caddy`（**不要重启**）
+#
+# 为什么放在 acli.d/sites 而不是主 Caddyfile：
+#   主 Caddyfile 由 ACLI 托管（"Managed by ACLI shared Caddy manager"），
+#   重装/升级 Caddy 面板可能被覆盖；sites/ 是官方扩展点，专门放站点片段。
+#   同理路由片段放 routes/。
+#
+# ── 安全模型（务必理解后再改） ─────────────────────────────────────────────
+#
+#   公网 :2444 ──Caddy(TLS+白名单)──▶ 127.0.0.1:2443 ──FRP 隧道──▶ 家里 DSH :19387
+#                     │
+#                     └─ 只放行 /mobile-gateway/{health,login,pair,api/*,remote.mux}
+#                        其余一律 404，**包括管理面**
+#
+#   为什么管理面必须在这里挡掉、而不能只靠 DSH 自己：
+#     DSH 的 /api 没有认证层，只有一道 Host/Origin 栅栏；而经过 FRP 隧道后，
+#     DSH 看到的对端是 **127.0.0.1（frpc）**，于是「回环才算本地」这个判断
+#     **被隧道抹平了** —— 网关自己的回环闸门会误判公网请求为本地。
+#     所以管理面只能由 Caddy 在最外层显式封死。这是整套设计里最容易被漏掉的一环。
+#
+#   换 VPS 时最容易踩的坑：白名单里少写一个路径 → 手机表现为「连不上」
+#   或「某个功能 404」。改完一定跑自检（见 provision-vps.sh 的 --verify）。
+
+https://<YOUR_VPS_PUBLIC_IP>:2444 {
+	tls {
+		issuer acme {
+			# IP 直连无法过 tls-alpn 挑战，只能走 HTTP-01
+			profile shortlived
+			disable_tlsalpn_challenge
+		}
+	}
+
+	# ── 健康检查（免鉴权，手机用它确认网关在线）──
+	handle /mobile-gateway/health {
+		reverse_proxy 127.0.0.1:2443
+	}
+
+	# ── 登录与配对 ──
+	handle /mobile-gateway/login {
+		reverse_proxy 127.0.0.1:2443
+	}
+	handle /mobile-gateway/pair {
+		reverse_proxy 127.0.0.1:2443
+	}
+
+	# ── 鉴权后的 RPC 转发 ──
+	handle /mobile-gateway/api/* {
+		reverse_proxy 127.0.0.1:2443
+	}
+
+	# ── 事件流 WebSocket（reverse_proxy 自动处理 Upgrade 头）──
+	#
+	# ⚠️ remote.mux 是**唯一**需要的路径。历史上有过 events.mux / events.host，
+	#    那两个在真实 DSH 宿主里根本不存在，留着只会让人以为可用。
+	handle /mobile-gateway/remote.mux {
+		reverse_proxy 127.0.0.1:2443
+	}
+
+	# ── 管理面：显式封死（见上方安全模型）──
+	handle /mobile-gateway/manage* {
+		respond "Not Found" 404
+	}
+
+	# ── 其余一律 404，不暴露站点存在 ──
+	handle {
+		respond "Not Found" 404
+	}
+}
