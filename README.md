@@ -41,6 +41,7 @@ scripts/
   audit-dsh-drift.sh    ★ 审计「仓库模板 vs 本机实机」的 DSH 配置 drift（WSL 侧）
   apply.sh              幂等落地（默认 --check；--dsh 落 DSH 配置）（WSL 侧）
   install-dsh.ps1       🔴 **一键装全部 bundle + 自研宿主插件**（PowerShell）
+  proxy-fix.ps1         ★ 修「代理变量大小写重复」导致 `Start-Process` 崩溃（PowerShell）
   provision-vps.sh      VPS 侧一键装 frps + Caddy（bash，在 VPS 上跑）
   check-secrets.sh      提交前密钥扫描（⚠️ 手动跑，无 CI 强制）
 ```

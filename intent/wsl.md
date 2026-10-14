@@ -213,6 +213,133 @@ Get-NetTCPConnection -State Listen |
 
 **这个块必须放在 `.bashrc` 的交互守卫之后**（因为它依赖 `proxy_port_alive`）。
 
+### 🔴 Windows 侧同一病根：DSH 注入**大小写两套**代理变量 → `Start-Process` 崩溃
+
+> **2026-10-14 实测。** 与上面「幽灵代理」是**同一个病根的两个方向**：
+> 那边是 WSL 里写死的小写变量，这边是 **DSH 给每个 Windows 子进程注入两套**。
+
+**现象**：在 DSH 会话里跑任何用 `Start-Process` 的 PowerShell 脚本，会直接抛：
+
+```
+已添加项。字典中的关键字:"NO_PROXY"所添加的关键字:"no_proxy"
+（Add failed: key "NO_PROXY" already exists ("no_proxy")）
+```
+
+**根因（已定位到源码）**：DSH 的 `@deepseek-ai/dsh-http-proxy`（在 `app.asar` 内）
+**故意**把每个代理变量**大小写各写一份**。它自己的注释写得很清楚：
+
+> The environment names each policy field owns, **lowercase first** ——
+> undici reads the lowercase name first, so **both casings are always written or cleared together**.
+
+它这么做有正当理由：**undici 只认小写，git/curl 等更认大写**，两边都要照顾。
+
+问题出在 **PowerShell 5.1**：它的 Environment 是**大小写不敏感**的字典，
+把这两套视为**同一个键的重复项**，于是 `Start-Process` 在重建环境块时**自己撞死**。
+
+**取证方法**（三条互相独立，都指向「DSH 注入、非系统设置」）：
+
+| 证据 | 命令 | 结果 |
+|---|---|---|
+| 注册表（持久层）只有大写 | `reg query "HKCU\Environment"` | 仅 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` **三件** |
+| 全新进程（非 DSH 子进程）只有大写 | `Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{CommandLine='cmd.exe /c set > out.txt'}` | 同样**只有三件大写** |
+| 在 DSH 会话内 | `cmd /c set`（经 DSH 起） | **六个**：三件大写 + 三件小写，另有 `NODE_USE_ENV_PROXY=1` |
+
+⇒ **只有 DSH 的子进程环境里有重复**，所以这不是注册表配错，**没法从系统层根治**。
+
+**修法**（三选一，按场景）：
+
+```powershell
+# ① 一次性：把当前会话的重复归一（本仓库已提供脚本，默认只体检）
+.\scripts\proxy-fix.ps1            # 体检
+.\scripts\proxy-fix.ps1 -Apply     # 归一当前进程
+```
+
+> ⚠️ **只对当前进程有效**：新开的会话由 DSH 重新注入，重复会**再次出现**。
+
+```powershell
+# ② 脚本里要启动进程：绕开 Start-Process（推荐，最省事）
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = $exe; $psi.UseShellExecute = $true
+[void][System.Diagnostics.Process]::Start($psi)
+```
+
+> ✅ 实测：`[Diagnostics.Process]::Start()` **不受影响**（它不重建那个字典）。
+> 已按此法修掉 `dsh-native-mobile/scripts/restart-and-verify.ps1` 的同一处。
+
+```powershell
+# ③ 无法改脚本时：先现算一遍脚本内容再执行
+& ([scriptblock]::Create((Get-Content .\x.ps1 -Raw)))
+```
+
+> ⚠️ **不要**试图用 `-UseNewEnvironment` 绕过 —— 实测**照样抛同一个异常**。
+
+**排查陷阱**：报错里点名的**不是你看到的第一个**重复对。
+它会一路报到最后一个冲突变量才停（本例真凶是 `NO_PROXY`/`no_proxy`，
+但删掉 `NO_PROXY` 后**换成** `https_proxy` 报错）。
+**所以「删掉报错里那个变量」通常修不好** —— 必须把四族**全部**归一：
+`HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY`。
+
+> 💡 **另一个坑（本脚本作者自己踩过）**：`.NET` 的
+> `[Environment]::SetEnvironmentVariable('no_proxy', $null, 'Process')`
+> 是**大小写不敏感**的 —— 传小写名进去，**实际删掉的可能是大写那个**。
+> 所以「删小写、留大写」这种说法**靠不住**；可靠做法是
+> **把整族反复删到 .NET 报告为空，再以大写名重设一次**（`proxy-fix.ps1` 就是这么做的）。
+
+### 🔴 git 侧代理：本次「git 代理怪毛病」的结论（**不是配置错，是瞬时的**）
+
+> **2026-10-14 排查结论：不要再给 git 加全局 `http.proxy`。**
+
+起因：当天一次 `git push` 报
+`Failed to connect to github.com port 443 via 127.0.0.1 after 6 ms`，
+加 `-c http.proxy=http://127.0.0.1:7897` 后立刻成功，表面上像「git 没读到环境变量」。
+
+**但复测推翻了「配置坏了」这个结论**：
+
+| 测法 | 结果 |
+|---|---|
+| 原样 `git ls-remote`（只靠环境变量）连打 **20 次** | **20/20 成功**，0 失败 |
+| `GIT_CURL_VERBOSE=1` 看实际走哪 | `Trying 127.0.0.1:7897` → `CONNECT tunnel established, response 200` |
+| **清空**全部 proxy 环境变量后直连 | 5/5 成功（本机**直连 GitHub 也通**） |
+| git 自身的 `http.proxy` / `https.proxy` | **都是空** —— 完全靠环境变量，工作正常 |
+
+⇒ **git 本来就正确地走环境变量代理，没问题**。那次失败是**瞬时的**
+（`after 6 ms` = TCP 立刻被拒，与 7897 后来实测的 `118ms` 正常握手完全不同，
+也不像 7899 那种「连上但挂住」）。
+
+**因此本次的处置是「不改配置」，理由有二**：
+
+1. **加了反而更脆**：`http.proxy` 一旦写死，**代理软件没跑时 git 不会回落直连**
+   （实测：把代理指向死端口 `9999`，git 仍按配置走 → 直接失败）。
+   而本机**直连 GitHub 实测可用**，不写配置反而多一条活路。
+2. **环境变量是最新的**：`HTTPS_PROXY` 由系统/DSH 维护；
+   写进 `.gitconfig` 等于把「当前端口」固化，换代理软件或改端口就变成死地址
+   （仓库里已有先例：Clash 时代遗留的 `github.com=7892` 死分节，见 `proxy.sh` 的清理逻辑）。
+
+**什么时候才该写 `git config`**：只有确认「**代理必需**（直连必失败）**且环境变量确实读不到**」。
+判据（可复现）：
+
+```powershell
+# 1) 直连是否可行？（清掉环境变量再试）
+foreach($k in 'HTTP_PROXY','HTTPS_PROXY','http_proxy','https_proxy'){ Remove-Item "Env:$k" -EA SilentlyContinue }
+git ls-remote origin HEAD        # 通 → 就不需要写配置
+# 2) 环境变量到底有没有被 git 读到
+$env:GIT_CURL_VERBOSE='1'; git ls-remote origin HEAD 2>&1 | Select-String 'CONNECT tunnel|Trying'
+```
+
+**若真要写**（注意端口要跟着代理软件走，别写死错端口）：
+
+```powershell
+git config --global http.proxy  http://127.0.0.1:7897
+git config --global https.proxy http://127.0.0.1:7897
+# 回滚
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+```
+
+> 📌 本仓 `templates/proxy.sh` 的做法（在 WSL 侧 `_sync_git` 里按探测结果同步
+> `http.proxy`）是**对的**：它是**动态探测后再写**，而不是写死。
+> 上一条「不要写」针对的是**手工加一个固定值**。
+
 ### 🔴 安全：`0.0.0.0` 监听 + 防火墙全关 = 对同网段放开
 
 portproxy 绑的是 `0.0.0.0`，意味着**本机所有网卡都响应**，包括局域网网卡。
