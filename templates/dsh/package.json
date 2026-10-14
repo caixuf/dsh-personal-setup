@@ -17,7 +17,7 @@
     "dsh-theme-studio": "^0.6.3",
     "dsh-wallpaper-bg": "^0.5.12",
     "dsh-whale-girl-pet": "^0.3.9",
-    "dsh-wsl-tool": "^1.11.0",
+    "dsh-wsl-tool": "1.12.5",
     "dsh-wsl-workspace": "^0.7.5",
     "dsh-wsl-workspace-picker": "^0.1.1"
   },
@@ -34,7 +34,6 @@
         "@anionex/dsh-eye-care",
         "@weibaohui/dsh-sync",
         "dsh-mnemon",
-        "dsh-whale-girl-pet",
         "@linxin666/dsh-client-ui-skill-explorer",
         "@deepseek-ai/dsh-experimental-agent-team-profile",
         "@deepseek-ai/dsh-experimental-voice-input-bundle",

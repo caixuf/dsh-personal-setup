@@ -10,7 +10,7 @@
   config:
     # ⚠️ 这一条是**运行时会话选择**，会话切换模型时会把它写回，不是配置漂移。
     # 模板只放一个「换台新机也一定存在」的基线（buddy 由 dsh-our-free-model 提供）。
-    # 本机当前值：provider: opendesign（自定义 provider，需自带 OPENDESIGN_API_KEY）。
+    # 本机当前值：provider: minimax-cn / MiniMax-M3.1-Flash-Preview（2026-10-14 会话内切换）。
     provider: buddy
     model: deepseek-v4.1-flash
     reasoningEffort: high
@@ -102,9 +102,11 @@
 - id: pet
   # 桌宠（dsh-whale-girl-pet）的**运行外观状态**：位置/隐藏是用户手动拖出来的，
   # 属运行时可变量，不要求与模板严格一致。
-  # ⚠️ 本机 2026-10-13 13:27 起该 bundle 已从 dsh.profile.bundles 移除（用户关掉了桌宠），
-  # 因此本机这条 override 目前是**惰性**的（指向一个不存在的 entry）。
-  # 模板保留它作为**默认基线**：新机装完即显示桌宠；不想要就删掉 bundles 里那一项。
+  # ⚠️ 用户 2026-10-13 关掉桌宠后，该 bundle 已从 dsh.profile.bundles 移除
+  # （本机与模板同步移除，2026-10-14），因此这条 override 现在是**惰性**的
+  # —— 它指向一个不存在的 entry，不生效。
+  # 想重新启用：把 "dsh-whale-girl-pet" 加回 package.json 的
+  # dsh.profile.bundles，再把下面 disabled 改成 false。
   disabled: false
   config:
     size: 260

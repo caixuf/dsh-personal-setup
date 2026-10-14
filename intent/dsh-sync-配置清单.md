@@ -152,6 +152,30 @@ workflow 模板在本仓 **`templates/dsh-sync/.github/workflows/merge-sync-bran
 > ⚠️ 改频率**不解决**上面那个 `branch: main` 故障 ——
 > 那是 pull 侧从一开始就 404，与频率无关。两件事分开看。
 
+### 🔴 落地要点：改频率要改**两个地方**（2026-10-14 实测）
+
+上一版只改了模板 `templates/dsh/cordis.patch.yml`，**本机实机一直是 30**。
+本次已把实机补齐，两处都要改才算生效：
+
+| 文件 | 谁读它 | 改法 |
+|---|---|---|
+| `~/.dsh/dsh-sync/settings.json` | 插件自己读（`syncSettings()`） | 备份后直接改 `intervalMinutes` |
+| `~/.dsh/profiles/desktop/cordis.patch.yml` | 宿主 config 层（`baseSettings()`） | 改 `dsh-sync` 段的 `intervalMinutes` |
+
+**优先级链**（源码 `syncSettings()` 实读）：
+
+```
+baseSettings()(cordis.patch.yml) → settings.json → settingsOverrides
+      ↑ 最高                      ↑ 仅当不比 host 新
+```
+
+⚠️ `pickFileSettingsLayer()` 有一句 `if (hostWriteAt > fileMtime) return {}`：
+**只要 DSH 之后再写一次 `cordis.patch.yml`，settings.json 就被忽略**。
+所以只改 settings.json 是**假生效**，两个都得改。
+
+⚠️ 改 `cordis.patch.yml` 后**必须重启 DSH**，否则磁盘 revision 与内存值脱节，
+后续任何设置保存都会被拒（表现：欢迎向导弹「暂时无法保存确认状态」）。
+
 ## 快照
 
 - 勾选 **「上传到云端」** → 写入 `backup/<实例ID>/snapshots/`
@@ -199,6 +223,26 @@ backup/<实例ID>/plugins/desktop/cordis.patch.yml
 2. 若 token 曾出现在对话/截图里 → **视为已泄漏**（见 `secrets.md`），去 GitHub 吊销重发。
    ⚠️ **吊销是唯一有效手段**：token 已在提交历史里，改文件 / force-push / 删分支都清不掉。
 3. 吊销重发后，本机要同时更新 `settings.json` 与 profile patch（或直接在面板重填）。
+
+### 🔴🔴 token 实际已被备份进 dsh-sync 仓（2026-10-14 实测，**止新增尝试失败**）
+
+上面写「两处都不入库」**只对本仓库成立**。实测发现 dsh-sync 仓里**也有**：
+
+| 项 | 实测结论 |
+|---|---|
+| 机制 | `pluginsStrategy: backup` → 插件把 `includeFiles`（含 `cordis.patch.yml`）**原样**写进 `~/.dsh/dsh-sync/repo/backup/<实例ID>/`，并推上 `github.com/caixuf/dsh-sync` |
+| 脱敏 | ❌ **无**。源码里只有 `sanitizeSnapshotName()` 清目录名，**内容零脱敏** |
+| 历史命中 | `backup/caixuf-e81809d4/.../cordis.patch.yml` 15 次提交 + `backup/caixuf2-edcc4bfe/...` 1 次 |
+| 远端可见性 | **private**（匿名 API 404）⇒ 未公开泄露 |
+
+**为什么本地修复无效（重要，别再白试）**：
+dsh-sync 每次同步会执行 `git reset --hard FETCH_HEAD` + `checkout` 到新的
+`sync/<实例ID>/<时间戳>` 分支。实测：手工提交 `.gitignore` 与 `git rm --cached backup/`
+后，**两个提交被完全丢弃**（`git branch --contains` 返回「不存在」），且 `.gitignore`
+文件本身消失。**这个仓的任何手工提交都活不过下一次自动同步。**
+
+⇒ 真正的修复点不在「排除文件」，而在**轮换该 PAT** 或**重写该仓历史**。
+`check-secrets.sh` 已扩展为跨仓扫描（见下），能持续发现这类问题。
 
 ## 配完后的验证
 

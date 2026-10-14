@@ -24,7 +24,35 @@
 
 > 🔴 **`dsh-sync/settings.json` 是本机新增的一处明文密钥落点**（2026-10-14 审计发现）。
 > 插件把 GitHub token 明文写在这个文件里，**同时**也写进 profile 的 `cordis.patch.yml`。
+<<<<<<< HEAD
 > 这两处**都不入库**；模板 `templates/dsh/cordis.patch.yml` 那份**只留注释、不含 token**。
+=======
+> 🔴 但「都不入库」**只对本仓库成立** —— 见下节：dsh-sync 仓的历史里其实已经有 token。
+
+### 🔴 token 已被备份进 dsh-sync 仓（2026-10-14 实测；**止新增尝试失败**）
+
+`dsh-sync` 的 `pluginsStrategy: backup` 会把 `includeFiles`（含 `cordis.patch.yml`）
+**原样**写进 `~/.dsh/dsh-sync/repo/backup/<实例ID>/`，并推上 `github.com/caixuf/dsh-sync`。
+源码**无任何内容脱敏**（只有 `sanitizeSnapshotName()` 清目录名）。
+
+| 项 | 实测结论 |
+|---|---|
+| 历史命中 | `backup/caixuf-e81809d4/.../cordis.patch.yml` 15 次提交 + `backup/caixuf2-edcc4bfe/...` 1 次 |
+| 远端可见性 | **private**（匿名 API 返回 404）⇒ **未公开泄露** |
+
+**⚠️ 本地「止新增」尝试失败，别再白试**：dsh-sync 每次同步执行
+`git reset --hard FETCH_HEAD` 并 checkout 到新的 `sync/<实例ID>/<时间戳>` 分支。
+实测手工提交的 `.gitignore` 与 `git rm --cached backup/` **两个提交都被丢弃**
+（`git branch --contains` 返回「不存在」），`.gitignore` 文件本身也消失。
+⇒ **该仓任何手工提交都活不过下一次自动同步。**
+
+**真正的修复点**（用户 2026-10-14 决定暂不做）：① 轮换该 PAT；② 重写 dsh-sync 历史。
+在两者之一完成前，**若要把该仓转 public，必须先重写历史**，否则 token 随历史公开。
+
+> 📌 **通用教训**：任何「把本机整个配置目录提交到 git」的自动同步工具，
+> 都要先确认那些文件里有没有明文密钥。`check-secrets.sh` 已扩展为
+> **跨仓扫描**（本仓 + dsh-sync / dsh-native-mobile / dsh-rea），能持续发现这类问题。
+>>>>>>> f86d1df (sync: 同步 dsh-sync 实机配置 + 修模板 drift + 跨仓密钥扫描)
 > 换机时**不要拷这两个文件**，在新机面板里重新填 token。
 >
 > 🔴🔴 **但 `dsh-sync` 自己那个私有库会收到 token**（2026-10-14 补，此前漏记）：
