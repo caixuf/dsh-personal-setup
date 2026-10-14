@@ -32,7 +32,8 @@ templates/              ← 【是什么】可直接复制、不含密钥
                         pnpm-workspace.yaml / cordis.machine-patch.yml /
                         frpc.toml / frps.toml / caddy/）
   proxy.sh              代理垫片（部署件，见 intent/wsl.md）
-  skills/               自建 skill（evidence-boundary 证据边界 / ui-design 界面设计，见 intent/dsh.md）
+  skills/               自建 skill（evidence-boundary 证据边界 / ui-design 界面设计 /
+                        pwsh-windows-ops Windows PowerShell 操作手册，见 intent/dsh.md）
   dsh-sync/             ★ **私有同步仓 `caixuf/dsh-sync` 的部署件**（workflow 模板 + 新建仓步骤，见其 README.md）
 forks/                  ← 【例外】本机 fork 的第三方源码（仅源码，不含构建产物）
   dsh-wsl-workspace/    WSL 用户级 skill 补丁（基线 0.7.5）；说明见其 README.fork.md
