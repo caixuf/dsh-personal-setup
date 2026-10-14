@@ -140,7 +140,10 @@
       gitEnabled: true
       autoSync: true
       syncOnStartup: true
-      intervalMinutes: 30
+      # 一天一次（1440 分钟）。用户 2026-10-14 定：30 分钟太勤，
+      # 而同步内容（skills/settings/插件清单）本来就不分钟级变化。
+      # 覆盖的开关：0 关闭定时；插件每日首个同步会自动打本地快照
+      intervalMinutes: 1440
       syncSkills: true
       syncSettings: true
       syncPlugins: true
