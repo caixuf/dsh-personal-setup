@@ -39,9 +39,9 @@ DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经�
 | `@deepseek-ai/dsh-base` | 官方核心 | 必需 |
 | `@deepseek-ai/dsh-web-app` | Web 界面层 | 必需 |
 | `dsh-our-free-model` | 免费模型接入 | ✅ 用 **npm 版**（`dsh-our-free-model@^2.1.0`）；本机已于 2026-10-12 从旧机 `file:` tgz 切到 npm |
-| `dsh-wsl-tool` | WSL 命令/路径/环境工具 | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor` |
-| `dsh-wsl-workspace` | 会话执行环境落地 WSL | **本地 fork，基线 0.7.5** —— WSL 用户级 skill 可见（61 个）。见「WSL 用户级 skill fork」 |
-| `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | |
+| `dsh-wsl-tool` | WSL 命令/路径/环境工具 + **侧栏 WSL 面板** | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor`/`wsl-bootstrap`/`wsl-term`。🔴 **版本必须跟上**：2026-10-14 从 `1.11.0` 升到 **`1.12.5`**（1.11.0 只在 DSH 0.1.7-rc.2 验证过，本机宿主是 0.2.0-rc.2），修的是**面板两处真实 bug**。见下「WSL 面板」节 |
+| `dsh-wsl-workspace` | 会话执行环境落地 WSL | ⚠️ **2026-10-14 实测已回滚成官方 0.7.5**（不再是本地 fork）。见「WSL 用户级 skill fork」 |
+| `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | 注册进 `conversation.hero.workspace.directoryFlow` 与 `sidebar.workspaces.directoryFlow` 两个槽位（priority −10 覆盖内置） |
 | `dsh-whale-girl-pet` | 鲸鱼娘桌宠 | ⚠️ 见下方「桌宠脆弱性」。**独立插件，不依赖皮肤中心**。🔴 **2026-10-13 13:27 起因用户关闭已从 `dsh.profile.bundles` 移除**（依赖仍在 `dependencies`、`node_modules` 里包完好 70/70）—— 想恢复桌面宠物就把这一项加回 bundles 再重启 |
 | `dsh-theme-studio` | 主题/配色 | 12 预设 + 深色对比度守护（亮度 < 0.18 自动提亮）。见「外观插件教训」 |
 | `dsh-terminal-panel` | 主栏全尺寸终端 | 最多 12 标签，刷新回放 256KB |
@@ -1308,6 +1308,119 @@ minimumReleaseAge: 0
 
 所以**不要用「`.pnpm/` 下有没有」判断安装成功** —— 包直接平铺在
 `node_modules/<包名>/`。反过来，**卸载后 `node_modules/<包名>/` 消失才是真卸掉了**。
+
+### 4. 🔴 `allowBuilds` 的**占位串**会让每次 add/remove 都以 exit 1 收场（假失败第 3 种）
+
+pnpm 11 遇到有 install 脚本的包时会要求逐包授权。**非交互**跑（脚本里、CLI 里）时，
+它把占用串写进 `pnpm-workspace.yaml`：
+
+```yaml
+allowBuilds:
+  '@google/genai': set this to true or false
+  cloudflared: set this to true or false
+  protobufjs: set this to true or false
+```
+
+**只要这三行还是占位串，每次 `dsh plugin add/remove` 都会**
+👉 包**装好了**（`node_modules` 有了、`package.json` 也写了），
+但 pnpm 以 `ERR_PNPM_IGNORED_BUILDS` + **exit 1** 收场，
+插件管理器据此报「`dsh: plugin command failed`」。
+
+**这就是本文件开头说的「假失败」的第 3 种形态**，判定方法同上：**只看磁盘，不看退出码**。
+
+**解法**（本机 2026-10-14 已修）：把三个值显式写成 `false`
+（都是传递依赖，构建脚本对 DSH 功能无必需作用）：
+
+```yaml
+allowBuilds:
+  '@google/genai': false
+  cloudflared: false
+  protobufjs: false
+```
+
+> ✅ 实测：改完再跑同一条 `add` → `Already up to date` + **exit 0**。
+> 已实测 `false` 是合法取值且 pnpm **不会**再回写占位串（`true` 才执行构建脚本）。
+> 模板 `templates/dsh/pnpm-workspace.yaml` 已同步这三行。
+
+⚠️ **别把这当成「加包失败」去反复重试或换命令** —— 包早就在了，再 add 只会
+一路 `Already up to date`，白折腾。
+
+## ✅ `dsh-wsl-tool` 侧栏 WSL 面板（2026-10-14 修复）
+
+**症状**：侧栏的 WSL 面板按钮点了打不开/空白，**重启 DSH 之后出现的**。
+
+### 真因：插件版本落后于宿主，且面板在那个区间有真实 bug
+
+| 项 | 值 |
+|---|---|
+| 修复前 | `dsh-wsl-tool@1.11.0`（2026-10-06 发布） |
+| 本机宿主 | DSH **`0.2.0-rc.2`** |
+| 1.11.0 的 `engines.dsh` | `>=0.1.7-rc.2` —— 而它的 README 写明**只在 0.1.7-rc.2 上验证过** |
+| 修复后 | **`1.12.5`**（2026-10-12） |
+
+上游在 **1.12.0** 的提交 `afa01ca` 明确写了「**two real panel bugs**」，
+两条都出在**面板的写入路径**上：
+
+1. **workdir 输入框的草稿存在闭包里，而输入是非受控的** ——
+   打字后到点「保存」之间，**任何一次重渲染**（拨一个开关、或路由读回的结果落地）
+   都会让保存写进**快照里的旧值**而不是你打的值（静默写错）。
+2. **终端历史字段在 `terminal-cwd` 的 GET 失败时永远停在 `loading`** ——
+   三条失败路径都只结算了目录字段，忘了这个，于是它的「保存」**永远是禁用状态，
+   且不说明原因**。
+
+> 🔍 **方法论**：当时面板注册**明明正常**（`sidebar.panellist` 与 `main` 两个槽位
+> 都显示 `dsh-wsl` 且 `active: true`），宿主路由 `/dsh-wsl-tool/info` 也正常返回 ——
+> 说明**问题不在注册、不在宿主，而在面板组件自身**。
+> **「active 只代表加载成功，不代表功能可用」**这条老规矩再次应验。
+
+### 修法（已执行）
+
+```powershell
+# 1) 先备份（profile 清单 + lockfile）
+$d="$env:USERPROFILE\.dsh\profiles\desktop"
+Copy-Item "$d\package.json","$d\pnpm-lock.yaml" "$env:USERPROFILE\.dsh\bak-$(Get-Date -Format yyyyMMdd-HHmmss)" -Force
+
+# 2) 升级（用 dsh CLI，不要手改 package.json）
+& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" `
+  plugin --profile desktop add dsh-wsl-tool@1.12.5
+```
+
+⚠️ **这一步会「报失败但其实成功」** —— 若 `allowBuilds` 还是占位串，
+pnpm 以 exit 1 收场（见下文「pnpm 坑 4」）。**只信磁盘**：
+
+```powershell
+(Get-Content "$d\node_modules\dsh-wsl-tool\package.json" -Raw -Encoding UTF8|ConvertFrom-Json).version
+# 必须打印 1.12.5
+```
+
+### 🔴 验证时必须重启 DSH，且用**运行时**版本号确认
+
+**Node ESM 不热重载** —— 升完包，磁盘是新的，**内存里还是旧的**。实测对照：
+
+```
+/dsh-wsl-tool/info 的 version 字段 → 1.11.0   ← 运行中的（旧）
+node_modules 里 package.json 的 version → 1.12.5  ← 磁盘上的（新）
+```
+
+**重启后**再访问 `/dsh-wsl-tool/info`，两处应**都变成 1.12.5** ——
+这就是「升级真的生效了」的判据（比看界面可靠）。
+
+### 顺带确认没坏的（排查记录，省一轮）
+
+| 检查 | 结果 |
+|---|---|
+| `wsl` / `wsl-path` / `wsl-env` / `wsl-doctor` 四个工具 | ✅ 全部可用 |
+| 侧栏 `dsh-wsl` 面板图标槽位 | ✅ 已注册、`active` |
+| `main` 面板槽位（key=`dsh-wsl`） | ✅ 已注册、`active` |
+| 宿主路由 `/dsh-wsl-tool/info`、`/terminal-cwd` | ✅ HTTP 200 |
+| 插件自带 API `/wsl-workspace/api`（`describe`/`listDistros`/`listDir`/`check`） | ✅ 全部正常（`listDistros` → `["Ubuntu"]`，`listDir` 能列 `/home/caixuf` 与 `/mnt/c/...`） |
+| 目录选择器两个槽位 | ✅ `priority: -10` 覆盖内置 |
+| relay（`lib/wsl-relay.js`）直接跑 | ✅ 真开出了 WSL bash 并回显 |
+
+> 💡 **排查时的一个教训**：`/wsl-workspace/api` 的 `params` 必须**嵌在 `params` 字段里**
+> （`{method, params:{...}}`），直接平铺参数会被误判成
+> `distro must be a valid WSL distribution name` —— 那是**我请求写错**，
+> 不是插件坏了。差点据此误报一个不存在的 bug。
 
 ## `@deepseek-ai/dsh-llm-pi-ai`（minimax / ccp 等第三方 provider）
 
