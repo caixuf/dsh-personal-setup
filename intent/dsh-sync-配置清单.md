@@ -70,6 +70,32 @@ git fetch <repoUrl> main   # exit=0 才算通；改前是 could not find remote 
 一天最多一个分支，见下节），要么换 GitCode 托管（功能完整，但要重建仓 + 改 `repoUrl` + 重填 token，
 属于**切模式**，动手前先确认覆盖旧路径的全部副作用）。
 
+## ✅ 处置：GitHub Actions 自动并 main（2026-10-14 已上线）
+
+**采纳第三条路**：不换托管方、不人工开 PR —— **用 CI 补上自动合并那一半**。
+
+workflow 模板在本仓 **`templates/dsh-sync/.github/workflows/merge-sync-branches.yml`**，
+已部署到 `caixuf/dsh-sync` 并**实跑验证**（run 38530894006 `completed/success`）。
+
+| 项 | 值 |
+|---|---|
+| 触发 | `cron: '17 4 * * *'`（UTC 04:17 = 北京 12:17，避开整点） |
+| 手动 | `gh workflow run merge-sync-branches --repo caixuf/dsh-sync` |
+| 凭据 | **内置 `GITHUB_TOKEN`**（`permissions: contents: write`），**不新增 PAT** |
+
+**三个设计取舍（别改坏）**：
+
+1. **只并「每台最新那个」，不全量并** —— 实测远端 17 个分支里 16 个是老快照，
+   全量并只会把 main 灌满历史垃圾。
+2. **冲突跳过，不强推** —— `git merge` 失败即 `git merge --abort` 跳过那一台。
+   宁可不并，也不让定时任务造出坏历史。
+3. **服务器端跑** —— 不占本机资源，机器关机也不影响。
+
+**上线前的验证**（不是先上了再说）：在临时 clone 里本地演练过 ——
+19 个分支正确挑出两台各一个最新分支、逐台合并零冲突、24 个文件。
+
+⚠️ **它不会让 main 变得"完整历史"**，只并每台最新快照 —— main 是「当前并集」，不是全部快照的堆。
+
 ## 你要填的（设置 → 插件 → dsh-sync → Git 页签）
 
 | 字段 | 值 |

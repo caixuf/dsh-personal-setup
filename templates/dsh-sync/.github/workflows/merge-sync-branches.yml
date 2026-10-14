@@ -1,0 +1,59 @@
+name: merge-sync-branches
+
+# dsh-sync 在 GitHub 上是「只推分支」降级模式：插件每次同步推一个
+# sync/<实例ID>/<时间戳> 分支，从不自动前进 main（PR 自动合并是 GitCode 专属）。
+# 结果：main 冻结在某一刻，pull 侧永远拉不到别人的新备份。
+#
+# 这个 workflow 补上那一半：每天把**每台机器最新那个** sync 分支并进 main。
+# 只取最新、不全量并 —— 老快照对 main 没有增量价值。
+# 冲突就跳过那一台，不强推：宁可不并，也不让 CI 造出坏历史。
+
+on:
+  schedule:
+    - cron: '17 4 * * *'      # 每天 04:17 UTC = 12:17 北京时间（避开整点高峰）
+  workflow_dispatch:           # 也能手动触发
+
+permissions:
+  contents: write               # 用内置 GITHUB_TOKEN，不需要额外 PAT
+
+concurrency:
+  group: merge-sync
+  cancel-in-progress: false     # 同步期间别把上一次合并掐掉
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 要看全部分支，默认浅克隆不够
+
+      - name: 合并每台机器最新的 sync 分支
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout main
+
+          merged=0
+          for instance in $(git branch -r | grep -o 'origin/sync/[^/]*' | sed 's|origin/sync/||' | sort -u); do
+            # 该实例时间戳最大的分支 = 最新一次同步
+            ts=$(git branch -r | grep -o "origin/sync/$instance/[0-9]*" | sed "s|.*/||" | sort -n | tail -1)
+            [ -z "$ts" ] && continue
+            branch="sync/$instance/$ts"
+            echo "▶ $instance 最新 = $ts"
+
+            if git merge --no-ff "origin/$branch" -m "merge $branch into main (auto)"; then
+              echo "  ✓ $branch 已并入"
+              merged=$((merged+1))
+            else
+              echo "  ✗ $branch 有冲突，跳过（不强推）"
+              git merge --abort
+            fi
+          done
+
+          if [ "$merged" -gt 0 ]; then
+            git push origin main
+            echo "已推送，合并了 $merged 个分支"
+          else
+            echo "没有可合并的内容，跳过推送"
+          fi
