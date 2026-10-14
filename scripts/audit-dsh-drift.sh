@@ -58,8 +58,11 @@ def load(p):
         print("  读取失败:",e); return set(), set()
 live_d, live_b = load(sys.argv[1])
 tmpl_d, tmpl_b = load(sys.argv[2])
+# 自研宿主插件：不经过 profile 的 package.json（由 install-dsh.ps1 从本地源码装），
+# 所以「模板有本机无」对它们是**假 drift** —— 这里直接抵消掉，避免每次误报。
+LOCAL_HOST_PLUGINS = {'dsh-mobile-gateway', 'dsh-rea'}
 only_live_d = live_d - tmpl_d
-only_tmpl_d = tmpl_d - live_d
+only_tmpl_d = (tmpl_d - live_d) - LOCAL_HOST_PLUGINS
 only_live_b = live_b - tmpl_b
 only_tmpl_b = tmpl_b - live_b
 for name, s in [("依赖:本机有模板无",only_live_d),("依赖:模板有本机无",only_tmpl_d),
@@ -69,6 +72,8 @@ for name, s in [("依赖:本机有模板无",only_live_d),("依赖:模板有本�
         for x in sorted(s): print(f"      {x}")
     else:
         print(f"  ✓ {name}: 无")
+print("  ℹ️ 已抵消的自研宿主插件（不经 profile package.json）: "
+      + ", ".join(sorted(LOCAL_HOST_PLUGINS & (tmpl_d - live_d)) or ["无"]))
 PY
 
 echo ""
@@ -89,6 +94,42 @@ if [ -f "$DSH_HOME/cordis.patch.yml" ]; then
     echo "  仓库有对应模板 (templates/dsh/cordis.machine-patch.yml)"
   else
     echo "  ⚠️ 仓库 templates/dsh/ 下没有机器级 patch 的模板（换机会漏）"
+  fi
+  # 逐条比对「挂载名」，而不是只看文件是否存在 —— 这才暴露真正的 drift
+  python3 - "$DSH_HOME/cordis.patch.yml" "$REPO/templates/dsh/cordis.machine-patch.yml" <<'PY'
+import sys
+try:
+    import yaml
+except ImportError:
+    print("  ℹ️ 没装 pyyaml，跳过逐条比对"); raise SystemExit
+def names(p):
+    out=[]
+    def walk(x):
+        if isinstance(x,list):
+            for i in x: walk(i)
+        elif isinstance(x,dict):
+            if 'name' in x and isinstance(x['name'],str): out.append(x['name'])
+            for v in x.values(): walk(v)
+    try:
+        walk(yaml.safe_load(open(p,encoding='utf-8')))
+    except Exception as e:
+        print("  解析失败:",e); return []
+    return sorted(set(out))
+live, tpl = names(sys.argv[1]), names(sys.argv[2])
+print("  本机挂载:", ", ".join(live) or "(无)")
+print("  模板挂载:", ", ".join(tpl) or "(无)")
+miss=[x for x in live if x not in tpl]
+extra=[x for x in tpl if x not in live]
+if miss: print("  ⚠️ 本机有、模板没有（换机会漏装）:", ", ".join(miss))
+if extra: print("  ⚠️ 模板有、本机没挂:", ", ".join(extra))
+if not miss and not extra: print("  ✓ 机器级 patch 与本机一致")
+PY
+  # 机器级 node_modules 副本：宿主插件的浏览器半边按这个路径解析
+  echo "  机器级 node_modules 副本:"
+  if [ -d "$DSH_HOME/node_modules" ]; then
+    ls -1 "$DSH_HOME/node_modules" 2>/dev/null | grep -v '^\.' | sed 's/^/    /'
+  else
+    echo "    (无 —— 装宿主插件时必须建)"
   fi
 else
   echo "  本机无机器级 patch"

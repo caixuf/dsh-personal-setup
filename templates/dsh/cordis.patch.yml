@@ -1,9 +1,16 @@
 # Your patch layer for this dsh profile, applied after every bundle layer:
 # a top-level YAML array of loader patch entries (id-targeted config
 # overrides, disables, and insert lists; `!!js` expressions allowed).
+#
+# 本文件 = profile 级 patch，装到 <dsh-home>/profiles/<name>/cordis.patch.yml。
+# 宿主插件（dsh-bot-gateway / dsh-mobile-gateway / dsh-rea）**不在这里** ——
+# 它们挂在机器级 <dsh-home>/cordis.patch.yml，见 templates/dsh/cordis.machine-patch.yml。
 - id: agent-default-model
   name: "@deepseek-ai/dsh-agent-default-model"
   config:
+    # ⚠️ 这一条是**运行时会话选择**，会话切换模型时会把它写回，不是配置漂移。
+    # 模板只放一个「换台新机也一定存在」的基线（buddy 由 dsh-our-free-model 提供）。
+    # 本机当前值：provider: opendesign（自定义 provider，需自带 OPENDESIGN_API_KEY）。
     provider: buddy
     model: deepseek-v4.1-flash
     reasoningEffort: high
@@ -68,22 +75,60 @@
             name: cmdc-deepseek-fast[1m]
             contextWindow: 1000000
             maxTokens: 64000
+      # ⚠️ 机器本地 provider：本机在用，但换机需要自己的 key（refs: OPENDESIGN_API_KEY）。
+      # 没有该 key 时不会报错，只会**静默调不通** —— 不想要就整段删掉。
+      opendesign:
+        apiKeyEnv: OPENDESIGN_API_KEY
+        api: openai-completions
+        baseURL: https://amr-link.open-design.ai/v1
+        models:
+          - id: deepseek-v4.1-flash
+            name: deepseek-v4.1-flash
+            contextWindow: 1000000
+            maxTokens: 1000000
+            input:
+              - text
+              - image
 - id: ui-theme
   name: "@deepseek-ai/dsh-client-ui-theme"
   config:
     preference: dark
+    fontSize: 17
 - id: dsh-eye-care
   name: "@anionex/dsh-eye-care"
   config:
     mode: off
     intensity: balanced
 - id: pet
+  # 桌宠（dsh-whale-girl-pet）的**运行外观状态**：位置/隐藏是用户手动拖出来的，
+  # 属运行时可变量，不要求与模板严格一致。
+  # ⚠️ 本机 2026-10-13 13:27 起该 bundle 已从 dsh.profile.bundles 移除（用户关掉了桌宠），
+  # 因此本机这条 override 目前是**惰性**的（指向一个不存在的 entry）。
+  # 模板保留它作为**默认基线**：新机装完即显示桌宠；不想要就删掉 bundles 里那一项。
   disabled: false
   config:
     size: 260
     position: bottom-right
-    posY: 728
+    posY: 529
     hidden: true
+- id: remote-web-ui
+  name: "@linxin666/dsh-remote-web-ui"
+  config:
+    lanBind: true
+
+# --- remote-web-ui lan-bind block (managed - do not edit) ---
+# ⚠️ 这段由插件自己维护（在设置 → 插件 → 远程访问里开「局域网访问」时写入）。
+# 作用是让 DSH 监听 0.0.0.0:19387，手机才连得上；⚠️ 会**同时把服务暴露给整个局域网**，
+# 不要在不受信任的网络里开。手机侧访问仍需走插件自己的配对流程。
+- id: webserver
+  name: '@deepseek-ai/dsh-host-webserver'
+  config:
+    host: '0.0.0.0'
+    port: 19387
+    compression: gzip
+    compressionLevel: 1
+    compressionThresholdBytes: 1024
+# --- end remote-web-ui lan-bind block ---
 
 - id: dsh-sync
   name: "@weibaohui/dsh-sync"
@@ -102,3 +147,7 @@
       skillsStrategy: union
       settingsStrategy: backup
       pluginsStrategy: backup
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-09-28.1

@@ -2,12 +2,26 @@
 
 ## 这是什么
 
-DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经验证 `fiberPhase: active`。
+DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经验证 `fiberPhase: active`。
 （曾装过 `dsh-mobile`，因 CLI 损坏 + 流程繁琐**已卸载**，踩坑记录见下方「dsh-mobile」一节 —— 新机**不要装**。）
 
-手机远程入口用 **`deepseek-harness-weixin`**（微信 iLink 官方通道，正常 bundle）。
-曾装的社区包 `dsh-bot-gateway` **已卸载**（它会在 WSL 里自动建 108 MB 的 NapCat 发行版）——
-机制不同（宿主插件要挂机器级 patch），记录见其专节。
+手机远程入口当前用 **`dsh-bot-gateway`**（宿主插件，QQ/Telegram/飞书/钉钉）。
+曾试装的 `deepseek-harness-weixin` 因 peer 代差崩过、**已卸载**（见其专节）。
+另有自研原生 Android 端 **`dsh-mobile-gateway`**（宿主插件，见 `remote-选型.md`）。
+
+> 🔴 **2026-10-14 全量重核（本节的数字以此为准）**
+> 上一次核对是 2026-10-13；此后本机又发生了几处变化，逐项复核结果：
+>
+> | 项 | 文档旧值 | 2026-10-14 实测 |
+> |---|---|---|
+> | bundle 数 | 17 | **18** |
+> | `dsh-bot-gateway` | 已卸载 | ⚠️ **已装回且 active**（机器级 patch 三行齐全） |
+> | `deepseek-harness-weixin` | 在用 | ❌ **没装**（文档方向写反了） |
+> | `ui-theme.preference` | `light` | ⚠️ **`dark`**（`fontSize: 17`） |
+> | `dsh-wsl-workspace` | 本机 fork（junction） | ❌ **已回滚成官方 0.7.5**，fork 源码仓已不在 |
+> | `dsh-whale-girl-pet` | 在 bundles 里 | ⚠️ **已从 bundles 移除**（包仍在 `dependencies`） |
+> | `dsh-mobile` / `dsh-mobile-access` | 已清 | ⚠️ `node_modules` 已清，但 `~/.dsh/mobile-access/` 仍在 |
+
 
 ## 约束（AI 必读）
 
@@ -28,7 +42,7 @@ DSH 桌面端的插件组合与外观配置。共 **17 个 bundle**，全部经�
 | `dsh-wsl-tool` | WSL 命令/路径/环境工具 | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor` |
 | `dsh-wsl-workspace` | 会话执行环境落地 WSL | **本地 fork，基线 0.7.5** —— WSL 用户级 skill 可见（61 个）。见「WSL 用户级 skill fork」 |
 | `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | |
-| `dsh-whale-girl-pet` | 鲸鱼娘桌宠 | ⚠️ 见下方「桌宠脆弱性」。**独立插件，不依赖皮肤中心** |
+| `dsh-whale-girl-pet` | 鲸鱼娘桌宠 | ⚠️ 见下方「桌宠脆弱性」。**独立插件，不依赖皮肤中心**。🔴 **2026-10-13 13:27 起因用户关闭已从 `dsh.profile.bundles` 移除**（依赖仍在 `dependencies`、`node_modules` 里包完好 70/70）—— 想恢复桌面宠物就把这一项加回 bundles 再重启 |
 | `dsh-theme-studio` | 主题/配色 | 12 预设 + 深色对比度守护（亮度 < 0.18 自动提亮）。见「外观插件教训」 |
 | `dsh-terminal-panel` | 主栏全尺寸终端 | 最多 12 标签，刷新回放 256KB |
 | `@anionex/dsh-eye-care` | 暖色护眼主题 | 明暗双套，不劫持 Appearance |
@@ -137,10 +151,15 @@ profile patch 与 bundles 名单对齐模板。
 | | 值 |
 |---|---|
 | 模板 | `buddy / deepseek-v4.1-flash / reasoningEffort: high` |
-| 本机 | `buddy / space-bunny / reasoningEffort: max` |
+| 本机（2026-10-14 实测） | `opendesign / deepseek-v4.1-flash`（无 `reasoningEffort`） |
 
 **这是运行时会话的选择，不是配置漂移** —— 会话启动时选的模型会被写回这一条。
 故 **模板不锁死它**；换机时用模板的 `buddy/deepseek-v4.1-flash` 作基线即可。
+
+> ⚠️ 本机换到了 `opendesign`（自定义 provider，走 `OPENDESIGN_API_KEY`）。
+> 模板里**同时保留了** `opendesign` 的 provider 定义（注释标明「机器本地」），
+> 这样新机若也想用，填个 key 即可；不想要就整段删掉 ——
+> 注意**没有该 key 时不会报错，只会静默调不通**。
 
 > 💡 **判据**：配置类条目（模型清单、上限、input 类型）必须两边一致；
 > 「当前选了什么」属运行时状态，允许与模板不同。
@@ -151,16 +170,34 @@ profile patch 与 bundles 名单对齐模板。
 bash scripts/audit-dsh-drift.sh --profile "/mnt/c/Users/<你>/.dsh/profiles/desktop"
 ```
 
-### 🔴 `dsh-mobile` 真实状态：**停用但没卸载**（本节标题曾写「已卸载」）
+### ✅ 2026-10-14 复核：审计脚本仍报的 2 项「模板有本机无」，都是**有意保留**
 
-审计实测：本机 `dsh plugin --profile desktop list` 仍列出 **`dsh-mobile@0.6.3`** 且 active；
-`package.json` 的 `dependencies` 与 `bundles` 均含它；`~/.dsh/mobile-access/` 仍在。
+`audit-dsh-drift.sh` 当前输出：
 
-**没有安全暴露**：端口 3443 **未监听**、`control.json` 为 `enabled: false`、局域网未开
-（2026-10-12 回滚时确认）。
+| 报告项 | 为什么不是错误 |
+|---|---|
+| 依赖：`dsh-mobile-gateway` / `dsh-rea` 模板有本机无 | 二者是**自研宿主插件**，由 `install-dsh.ps1` 从本地源码装，**不经过 profile 的 `package.json`**。它们实际已装且 `active`（在 `node_modules` 与机器级 patch 里）—— **脚本只看 profile `package.json`，看不到机器级那一层**，属脚本的已知盲区 |
+| bundle：`dsh-whale-girl-pet` 模板有本机无 | **模板刻意领先**：模板是目标基线（装完有桌宠），本机 2026-10-13 起被用户关掉。按 README 的说明，「模板有本机无」代表本机还没追上，**不是模板错** |
 
-即：**它是「停用未卸载」**。此前文档写「已完全卸载、五处无残留」是**另一台机器
-（或另一时间点）的状态，本机不成立**。卸不卸由用户定 ——
+> 📌 **脚本盲区待修**（未做）：让 `audit-dsh-drift.sh` 也检查
+> `<dsh-home>/cordis.patch.yml` 的宿主插件行与 `<dsh-home>/node_modules/`，
+> 否则每次审计都会重复报这两条假 drift。
+
+### 🔴 `dsh-mobile` 真实状态（2026-10-14 更新：插件已彻底清掉）
+
+**旧结论（2026-10-12）**：本机 `dsh-mobile@0.6.3` 「停用但没卸载」，
+`dependencies`/`bundles`/`node_modules` 均含它。
+
+**2026-10-14 实测：插件本体已清干净** ——
+`node_modules\dsh-mobile` **不存在**，`package.json` 的 `dependencies` 与 `bundles`
+**都不含它**，所以上面那个「停用未卸载」的结论**已作废**。
+
+⚠️ **唯一残留**：目录 `~/.dsh/mobile-access/` **仍在**（插件数据目录）。
+**没有安全暴露**：端口 3443 **未监听**、`control.json` 为 `enabled: false`、局域网未开。
+想彻底清就删掉这个目录（不影响任何在用功能）。
+
+即：**它曾是「停用未卸载」**。此前文档写「已完全卸载、五处无残留」是**另一台机器
+（或另一时间点）的状态，本机当时不成立**。卸不卸由用户定 ——
 **真要卸干净需删三处**：`package.json` 的 `dependencies` + `bundles`、
 `node_modules/dsh-mobile/`、`~/.dsh/mobile-access/`（然后重启 DSH）。
 
@@ -314,7 +351,7 @@ $adb = "C:\Users\20247\WorkBuddy\2026-09-13-17-45-46\.workbuddy\platform-tools\a
 
 | 文件 | 放什么 |
 |---|---|
-| `~/.dsh/cordis.patch.yml`（机器级） | `bot-gateway` 这一行 |
+| `~/.dsh/cordis.patch.yml`（机器级） | 🔴 **三行宿主插件**：`bot-gateway` / `mobile-gateway` / `rea` |
 | `~/.dsh/profiles/desktop/cordis.patch.yml` | 其余所有 bundle 的配置 |
 
 机器级那行的写法（零配置开箱即用，运行时数据默认落 `~/.dsh/bot-gateway/`）：
@@ -597,12 +634,12 @@ bash scripts/patches/dsh-bot-gateway-focus-guard.sh
    ⚠️ 2026-10-12 已卸载 `skin-center`，`blue-fantasy` 皮肤随之消失，**这是可接受的**
    —— 用户明确说「不需要花哨皮肤」。若将来要恢复皮肤，**不要**用 `skin-center`
    （见「外观插件教训」），优先 `dsh-theme-gallery`（3,709/月）。
-2. `ui-theme.preference` —— **当前实机值 = `light`**（`cordis.patch.yml`，`fontSize: 17`）
-   ⚠️ **本文早期版本曾写「应为 `dark`」，那是 skin-center 覆盖时期的判断，现已作废。**
-   `skin-center` 已于 2026-10-12 卸载，配置不再被回写，**以实机实际值为准**。
-   🔴 **这是全机唯一「文档与实机直接对立」的配置项，未擅自更改** ——
-   明暗是用户的视觉偏好，AI **不要**自己切。用户若想要 `dark`，
-   去「设置 → 通用 → 外观」改，改完回来更新本行。
+2. `ui-theme.preference` —— 🔴 **2026-10-14 实测 = `dark`**（`cordis.patch.yml`，`fontSize: 17`）
+   ⚠️ 本节历史上反复写反过：先写「应为 `dark`」→ 又改成「实机值 = `light`」→
+   **现在实测又是 `dark`**。**别再抄这里的结论，直接读实机**
+   （`~/.dsh/profiles/desktop/cordis.patch.yml` 的 `ui-theme` 段）。
+   明暗是用户的视觉偏好（用户后续装了 `dsh-theme-studio`，模板也随之写 `dark`），
+   AI **不要**自己切。用户若想改，去「设置 → 通用 → 外观」改，改完回来更新本行。
 3. **背景遮挡由用户自行调节，AI 不要写死数值**：
    - 现在归 `dsh-wallpaper-bg` 管：`overlayOpacity`（默认 40）、`lightFog`（默认 55）
    - 用户按壁纸深浅自己拉到看得清为止
@@ -618,9 +655,36 @@ bash scripts/patches/dsh-bot-gateway-focus-guard.sh
 | `dsh-plugin-ops-bundle` | 37 条警告全属误报（见下）。**已卸载** |
 | `@linxin666/dsh-web-all` | 内含 skin-center，**与已装的重复挂载**会报错 |
 
-## WSL 用户级 skill fork（2026-10-12）
+## WSL 用户级 skill fork（2026-10-12）—— 🔴 **已回滚，本机现在是官方版**
 
-> **状态：✅ 已装入并生效**（基线 `v0.7.5`，提交 `f1f30d2`）。
+> 🔴 **2026-10-14 实测结论：fork 已不在本机。** 下面「已装入并生效」的描述**已作废**。
+>
+> 取证（三条独立证据）：
+> 1. `~/.dsh/profiles/desktop/node_modules/dsh-wsl-workspace` 是**真实目录**（非 junction），
+>    版本 **0.7.5**，`package.json.repository` = 上游 `dsh-wsl-workspace-maintainers`；
+> 2. fork 的四个标志符号在实装 `lib/` 里**各 0 命中**：
+>    `discoverUserSkillRoots` / `USER_DSH_RANK` / `USER_AGENTS_RANK` / `resolveDistributionHome` ——
+>    对照 `forks/dsh-wsl-workspace/src/host/wsl-skills.ts` 里它们是存在的，说明装的是官方版；
+> 3. `package.json` 里是 `"dsh-wsl-workspace": "^0.7.5"`（**不是** `link:`），
+>    `pnpm-lock.yaml` 有 `dsh-wsl-workspace@0.7.5` 正常条目；
+> 4. fork 的运行副本目录 `C:\Users\20247\Downloads\minimax_work\dsh-wsl-workspace-fork` **不存在**，
+>    WSL 源仓 `~/code/dsh-wsl-workspace` **也不存在**。
+>
+> **后果**：WSL 用户级 skill **不再被加载**。当前实机 WSL 里带 `SKILL.md` 的 skill：
+> `~/.claude/skills` **7 个**、`~/.agents/skills` **9 个**（并集 9 个），
+> 而文档旧值写「61 个 / 62 个」—— **数字与目录内容都已对不上**。
+> 官方版只扫项目级（`<项目>/.dsh/skills`、`<项目>/.agents/skills`），不扫用户级 `~/.agents/skills`。
+>
+> **要恢复 fork**：源码仍在 `forks/dsh-wsl-workspace/`（仅源码，无 `lib/`），
+> 按 `forks/dsh-wsl-workspace/README.fork.md` 重建 → 复制到 Windows 可访问路径 →
+> profile 那条依赖改成 `link:<你的路径>` → 重装 → 重启 DSH。
+> ⚠️ 重建前**必须先跑哨兵** `grep -c variantGeneration lib/index.js`（必须为 0，见下）。
+>
+> 以下保留**历史记录**，因为「0.7.5→0.7.7 不是补丁升级」这个坑依然有效，重建时必看。
+
+### 历史记录（2026-10-12 当时状态，现已回滚）
+
+> **当时状态：✅ 曾装入并生效**（基线 `v0.7.5`，提交 `f1f30d2`）。
 > 第一次基于 0.7.7 的尝试炸了并回滚，真因见下方「❌ 致命坑」。**重做方法：fork 0.7.5。**
 
 ### 问题（**装 fork 之前**的状态）
@@ -652,9 +716,13 @@ WSL 里有 **61 个 skill**，但 DSH 开 WSL 会话时**只加载 5 个**（4 �
 - `discoverUserSkillRoots()` —— **带符号链接回退**（本机 `~/.agents/skills` 就是链接）
 - `discoverAllSkillRoots()` —— 合并项目级 + 用户级
 
-端到端实测：WSL 侧 `~/.claude/skills` 发现 **61 个 skill**；
+端到端实测（**fork 时期，2026-10-12**）：WSL 侧 `~/.claude/skills` 发现 **61 个 skill**；
 经 skill-explorer API 观察 `user-agents` 组为 **62 个**（多一个 Windows 侧写入的 `tabbit`）。
 两个口径都对，别混用 —— 详见下方「✅ 生效验证」。
+
+> 🔴 **2026-10-14 实测：这些数字已失效。** fork 回滚后本机 WSL 里带 `SKILL.md` 的 skill
+> 只有 `~/.claude/skills` **7 个**、`~/.agents/skills` **9 个**（并集 9 个），
+> 且用户级 skill **不再被官方版加载**。旧数字（61/62）保留在此仅作 fork 时期的历史对照。
 
 ### ❌ 致命坑：0.7.5 → 0.7.7 **不是补丁升级**
 
@@ -681,16 +749,20 @@ Unknown agent preset: wsl-standard (gateway/internal)
 
 ⚠️ **这正是「能跑的配置别动」那条铁律要防的事**：小版本号 +N 不代表兼容。
 
-### ✅ 当前安装形态
+### ✅ 当前安装形态（🔴 2026-10-14 已回滚为官方版）
 
 ```
-node_modules\dsh-wsl-workspace ──junction──> C:\Users\20247\Downloads\minimax_work\dsh-wsl-workspace-fork
-package.json: "dsh-wsl-workspace": "link:C:/Users/20247/Downloads/minimax_work/dsh-wsl-workspace-fork"
-版本 0.7.5   variantGeneration = 0   discoverUserSkillRoots = 2 处
+node_modules\dsh-wsl-workspace  → 真实目录（非 junction），官方 0.7.5
+package.json: "dsh-wsl-workspace": "^0.7.5"
+版本 0.7.5   variantGeneration = 0   discoverUserSkillRoots = 0 处 ← 官方版没有它
 ```
 
-WSL 侧 `~/code/dsh-wsl-workspace`（分支 `feat/wsl-user-skills-075`）是 git 源，
-`minimax_work\dsh-wsl-workspace-fork` 是**运行副本** —— 改代码要两边同步：
+> ⚠️ 下面这段是 **fork 还在时**的说明，仅供将来重建时参考。
+> 现在 `~/code/dsh-wsl-workspace`（git 源）与
+> `minimax_work\dsh-wsl-workspace-fork`（运行副本）**两个目录都不存在了**。
+
+WSL 侧 `~/code/dsh-wsl-workspace`（分支 `feat/wsl-user-skills-075`）曾是 git 源，
+`minimax_work\dsh-wsl-workspace-fork` 曾是**运行副本** —— 改代码要两边同步：
 
 ```bash
 # 1. 在 WSL 源仓改 src/
@@ -1023,8 +1095,9 @@ plugin_manager list_plugins     ← 用这个工具，不是 CLI
 **输出里根本没有 `fiberPhase` 字段**，无法证明任何加载状态。
 观察 `fiberPhase` 的**唯一正确途径**是 `plugin_manager` 工具的 `list_plugins` / `list_bundles`。
 
-期望：17 个 bundle 全部 `fiberPhase: active`、零加载失败。
-（若将来装 `dsh-mobile` 则为 18 个，但当前**不建议装**，见该节。）
+期望：**18 个 bundle 全部 `fiberPhase: active`、零加载失败**（2026-10-14 实测 18/18）。
+（`dsh-whale-girl-pet` 现**不在** bundles 里；若加回去就是 19 个。
+`dsh-mobile` 不要装，见该节。）
 
 ⚠️ **`active` 只代表「加载成功」，不代表「功能可用」。** 本机已两次踩到：
 内置 Tabbit 是 `active` 但浏览器本体没装；skin-center 是 `active` 但设置项静默注册失败。
@@ -1498,6 +1571,11 @@ API 的 `user-agents` 组是 **62** 个 —— 因为 `~/.agents/skills` 除链�
 
 ### 本机实际加载的 skill
 
+> 🔴 **2026-10-14：本节全部数字已过期。** fork 已回滚（官方 0.7.5 不扫用户级 skill 根），
+> 下面「67 个」「62 个 `user-agents`」都不再成立。
+> 当前 WSL 侧磁盘上带 `SKILL.md` 的：`~/.claude/skills` **7 个**、`~/.agents/skills` **9 个**。
+> 「实际被加载几个」应在会话里用 skill 工具实测，不要沿用历史数字。
+
 **装 fork 前（2026-10-12 上午，5 个）**：
 ```
 diagnose-windows-sandbox-acl   内置
@@ -1520,11 +1598,14 @@ tabbit                         磁盘（~/.agents/skills）
 | 路径 | 内容 | 可否直接复制 |
 |---|---|---|
 | `~/.dsh/profiles/desktop/{package.json,cordis.patch.yml,pnpm-lock.yaml}` | 插件配置 | ✅ 小且关键 |
-| `~/.dsh/profiles/desktop/node_modules/` | 依赖产物 100.8 MB | ❌ **不要复制**，重建 |
+| `~/.dsh/profiles/desktop/pnpm-workspace.yaml` | pnpm 配置（`nodeLinker`/`minimumReleaseAge`/`allowBuilds`） | ✅ 见 `templates/dsh/` |
+| `~/.dsh/profiles/desktop/node_modules/` | 依赖产物（数百 MB） | ❌ **不要复制**，重建 |
 | `~/.dsh/skin-center-active.json` | ~~皮肤选择~~ | ⚪ **已失效**，插件卸载后无人读取，可不迁移 |
-| `~/.dsh/cordis.patch.yml` | **机器级**补丁层 | ⚪ **当前只有注释**（`dsh-bot-gateway` 已卸）。⚠️ 装宿主插件时**必须**用它 —— profile 级 patch 会被 DSH 的 `profiles.broken-<ts>` 隔离丢掉；模板见 `templates/dsh/cordis.machine-patch.yml` |
-| `~/.dsh/node_modules/` | 机器级包副本（仅宿主插件需要） | ⚪ 当前为空 |
+| `~/.dsh/cordis.patch.yml` | **机器级**补丁层 | 🔴 **三行 insert 齐全**：`dsh-bot-gateway` / `dsh-mobile-gateway` / `dsh-rea`。⚠️ 装宿主插件**必须**用它 —— profile 级 patch 会被 DSH 的 `profiles.broken-<ts>` 隔离丢掉；模板见 `templates/dsh/cordis.machine-patch.yml` |
+| `~/.dsh/node_modules/` | 机器级包副本（仅宿主插件需要） | ⚪ **当前有 3 个**：`dsh-bot-gateway` / `dsh-mobile-gateway` / `dsh-rea`，由 `install-dsh.ps1` 维护 |
+| `~/.dsh/mobile-access/` | ~~`dsh-mobile` 插件数据~~ | ⚪ **已停用的残留**（插件本体已卸载，此目录仍在），可不迁移 |
+| `~/.dsh/dsh-sync/{settings.json,state.json,repo/}` | 多机同步插件的本地状态 | ⚠️ `settings.json` **含明文 GitHub token**，❌ 不要复制；新机自己在面板里填（见 `dsh-sync-配置清单.md`） |
 | `~/.dsh/our-free-model/{settings,availability,catalog}.json` | 免费模型的开关 / **逐模型可用性** / 目录 | ⚠️ **不要复制** `availability.json` —— 它是本机出口 IP 的探测结果，换机必然失效（见「可用性」一节） |
-| `~/.dsh/.credentials.yaml` | 密钥 19 条 | ❌ 见 `secrets.md` |
-| `~/.dsh/sessions/` | 会话记录 11 MB | 可选 |
+| `~/.dsh/.credentials.yaml` | 凭据库：`records` 3 条 + `refs` **14 条** | ❌ 见 `secrets.md` |
+| `~/.dsh/sessions/` | 会话记录 | 可选 |
 | `C:\Users\<user>\dsh-plugin-packages\*.tgz` | free-model 的旧机私存副本 | ⚠️ 不在 `~/.dsh` 内、本仓库也不含；**新机不必带它，改用 npm 版** |

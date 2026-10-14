@@ -14,3 +14,19 @@ autoInstallPeers: false
 # 这是**取舍不是配置正确**：换来了能正常增删插件，代价是失去供应链的新鲜度防护。
 # 见 intent/dsh.md「pnpm 在本机的三个坑」第 1 条。
 minimumReleaseAge: 0
+
+# pnpm 11.7 新增：安装带 install 脚本的包时会要求逐包授权是否执行构建脚本。
+# 未列出的包 pnpm 会**交互式索要**答案；非交互（脚本里）跑时它把占位串
+# "set this to true or false" 写进本文件，等人来改。
+#
+# 本机实测 pnpm 写下的三个包（都是传递依赖，不是我们主动装的）：
+#   @google/genai  → dsh-browser-cdp 依赖链
+#   cloudflared    → 用于下载 cloudflared 二进制
+#   protobufjs     → 有 postinstall
+# 模板统一给 **false**（默认拒绝执行构建脚本）—— 与「不轻易让第三方包跑构建脚本」
+# 的取向一致，且这三个包的构建脚本对 DSH 功能没有必需作用。
+# 若某个插件确实需要它跑构建，再把对应项改成 true。
+allowBuilds:
+  '@google/genai': false
+  cloudflared: false
+  protobufjs: false

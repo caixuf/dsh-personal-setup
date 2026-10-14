@@ -11,9 +11,10 @@
 
 ## 密钥文件位置（均在旧机，不入库）
 
-| 文件 | 内容 | 条目数 |
+| 文件 | 内容 | 条目数（2026-10-14 实测） |
 |---|---|---|
-| `~/.dsh/.credentials.yaml` | DSH 凭据库 | 19 条 |
+| `~/.dsh/.credentials.yaml` | DSH 凭据库 | `records` **3** + `refs` **14** |
+| `~/.dsh/dsh-sync/settings.json` | 🔴 **含明文 GitHub PAT**（同步用） | 1 个 token |
 | `~/.ccp/secrets.env` | ccp 密钥 | — |
 | `~/.config/litellm/proxy.env` | litellm 网关密钥 | — |
 | `~/.config/litellm/github_copilot/{access-token,api-key.json}` | Copilot 令牌 | 2 |
@@ -21,19 +22,44 @@
 | `~/.git-credentials` | git 凭据（credential.helper=store） | — |
 | `~/.claude*` / `~/.codex/` / 各 CLI 的登录态 | 各 AI CLI | — |
 
+> 🔴 **`dsh-sync/settings.json` 是本机新增的一处明文密钥落点**（2026-10-14 审计发现）。
+> 插件把 GitHub token 明文写在这个文件里，**同时**也写进 profile 的 `cordis.patch.yml`。
+> 两处都不入库；模板 `templates/dsh/cordis.patch.yml` 那份**只留注释、不含 token**。
+> 换机时**不要拷这两个文件**，在新机面板里重新填 token。
+
 ## DSH 凭据（`~/.dsh/.credentials.yaml`）
 
-实测的 **refs 段**（按 provider 分组）：
+### `records` 段（3 条，服务自己的登录态）
+
+| 键 | 用途 |
+|---|---|
+| `client-connection/browser-session` | 浏览器会话密钥 |
+| `deepseek-account-platform/device` | 设备标识 |
+| `deepseek-account-platform/default` | DeepSeek 账号令牌 |
+
+### `refs` 段（**14 条**，按 provider 分组，实测清单）
 
 | 变量名 | 来源 | 获取方式 |
 |---|---|---|
 | `MINIMAX_CN_API_KEY` | MiniMax 中国站 | MiniMax 控制台申请 |
 | `CCP_API_KEY` | ccp / commandcode | `~/.ccp` 系统配置 |
-| `BUDDY_ACCOUNT_41221658` | 账号渠道（free-model 插件） | 插件内登录 |
-| `WORKBUDDY_ACCOUNT_11451829` | 账号渠道（free-model 插件） | 插件内登录 |
+| `OPENDESIGN_API_KEY` | opendesign（`amr-link.open-design.ai`） | 🔴 **本机 `agent-default-model` 正在用它**；新机若要沿用需自备 key |
+| `BUDDY_ACCOUNT_8B057D96` / `BUDDY_ACCOUNT_D97EE071` | 账号渠道（free-model 插件） | 插件内登录 |
+| `WORKBUDDY_ACCOUNT_B68139B6` | 账号渠道（free-model 插件） | 插件内登录 |
+| `TRAE_ACCOUNT_64EE6BA1` | Trae | 该 CLI 内登录 |
+| `CLINE_ACCOUNT_024710A9` | Cline | 该 CLI 内登录 |
+| `ZCODE_ACCOUNT_7A576D42` | Z.ai / 智谱 | 该 CLI 内登录 |
+| `GEMINI_ACCOUNT_66EBEA9A` / `GEMINI_ACCOUNT_BC107CAF` | Gemini（两个账号） | OAuth 流程 |
+| `MINIMAX_ACCOUNT_0F271DBB` | MiniMax 账号态 | OAuth 流程 |
+| `QODER_ACCOUNT_6BBE5A69` / `QODERCN_ACCOUNT_F433C5E0` | Qoder（国际站 / 中国站） | 该 CLI 内登录 |
 
-**注意**：`BUDDY_ACCOUNT_*` / `WORKBUDDY_ACCOUNT_*` 是**账号渠道**的登录态，
-由 `dsh-our-free-model` 插件管理。新机应**通过插件重新登录**，而不是拷这个文件。
+> ⚠️ 旧版本本文写「4 个 ref」并只列了 `BUDDY_ACCOUNT_41221658` /
+> `WORKBUDDY_ACCOUNT_11451829` 两个**已不再存在的**账号 ID ——
+> **2026-10-14 已按实机重新枚举为 14 条**。这类账号 ID 会随重新登录变化，别照抄。
+> 另：`CCP_API_KEY` 本机值 `sk-cmdc-litellm-local` 是**本地网关的固定占位串**，不是真密钥。
+
+**注意**：`*_ACCOUNT_*` 都是**账号渠道**的登录态，
+由 `dsh-our-free-model` 等插件管理。新机应**通过插件重新登录**，而不是拷这个文件。
 
 ### 与 DeepSeek 账号的关系
 
@@ -116,12 +142,13 @@ prefix=/home/caixuf/.npm-global
 
 ## 检查清单（新机配置完成后）
 
-- [ ] `~/.dsh/.credentials.yaml` 中 4 个 ref 已按需填入
+- [ ] `~/.dsh/.credentials.yaml` 中**用到的** ref 已按需填入
+- [ ] 🔴 `~/.dsh/dsh-sync/settings.json` **没有**从旧机复制（含明文 GitHub token）
 - [ ] `~/.config/litellm/proxy.env` 已创建且 `chmod 600`
 - [ ] `gh auth login` 完成，`git push` 可用
 - [ ] 各 AI CLI 已重新登录
 - [ ] **确认没有把任何密钥提交进本仓库**：
       ```bash
-      git log --all -p | grep -iE "sk-[A-Za-z0-9]{20,}|api[_-]?key.*=.*[A-Za-z0-9]{20,}"
+      git log --all -p | grep -iE "sk-[A-Za-z0-9]{20,}|api[_-]?key.*=.*[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}"
       ```
       有输出即说明泄漏，需 `git filter-repo` 清理并**轮换所有密钥**。

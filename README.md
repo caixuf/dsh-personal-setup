@@ -22,21 +22,26 @@ intent/                 ← 【为什么】人可读的意图。AI 的核心决�
   dsh-sync-配置清单.md  多机同步（dsh-sync）首次配置步骤与跨机顺序
   ecosystem.md          生态调研结论（哪些插件是什么、值不值得装、调研方法）
                         含**浏览器能力**与**壁纸**的选型与实测结果
+  新机器复刻清单.md      🔴 **换机就照这份走**：clone 三仓 → 一条脚本 → 重启
 templates/              ← 【是什么】可直接复制、不含密钥
   bashrc.d/*.sh         .bashrc 的片段（拆开，不整份覆盖）
   profile.d/*.sh        .profile 的片段
   systemd/*.service     systemd 单元
   litellm/config.yaml   本地模型网关配置（已剔除密钥）
-  dsh/                  DSH profile 配置（package.json / cordis.patch.yml / pnpm-workspace.yaml）
+  dsh/                  DSH profile 配置（package.json / cordis.patch.yml /
+                        pnpm-workspace.yaml / cordis.machine-patch.yml /
+                        frpc.toml / frps.toml / caddy/）
   proxy.sh              代理垫片（部署件，见 intent/wsl.md）
   skills/               自建 skill（当前：evidence-boundary，见 intent/dsh.md）
 forks/                  ← 【例外】本机 fork 的第三方源码（仅源码，不含构建产物）
   dsh-wsl-workspace/    WSL 用户级 skill 补丁（基线 0.7.5）；说明见其 README.fork.md
+                        🔴 **2026-10-14 起本机已回滚成官方版**，源码留此备重建
 scripts/
   audit.sh              盘点**当前机**实际状态，供 AI 与新机对比（WSL 侧）
   audit-dsh-drift.sh    ★ 审计「仓库模板 vs 本机实机」的 DSH 配置 drift（WSL 侧）
-  apply.sh              幂等落地（默认 --check；--dsh 落 DSH 配置三件）（WSL 侧）
-  install-dsh.ps1       🔴 **一键装全部 bundle**（PowerShell，dsh 是 Windows 程序）
+  apply.sh              幂等落地（默认 --check；--dsh 落 DSH 配置）（WSL 侧）
+  install-dsh.ps1       🔴 **一键装全部 bundle + 自研宿主插件**（PowerShell）
+  provision-vps.sh      VPS 侧一键装 frps + Caddy（bash，在 VPS 上跑）
   check-secrets.sh      提交前密钥扫描（⚠️ 手动跑，无 CI 强制）
 ```
 
@@ -79,19 +84,31 @@ bash scripts/audit.sh
 bash scripts/apply.sh --dsh
 ```
 
-它会：备份旧配置 → 复制三件（`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`）
+它会：备份旧配置 → 复制 `package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`
 → **在覆盖前**做机器绑定项自检 → 打印下一步。
 
-### 第 4 步：装全部 bundle（`install-dsh.ps1`）
+> ⚠️ `apply.sh --dsh` **不管机器级 patch**（`<dsh-home>/cordis.patch.yml`）——
+> 那一步连同**宿主插件安装**一起交给第 4 步的 `install-dsh.ps1` 自动化。
+
+### 第 4 步：装全部 bundle + 宿主插件（`install-dsh.ps1`）
 
 ```powershell
 # 在 PowerShell 里跑（dsh 是 Windows 程序，不能在 WSL/bash 里跑）
 .\scripts\install-dsh.ps1                    # 装到 desktop
-.\scripts\install-dsh.ps1 -DryRun            # 只列清单，不真装
+.\scripts\install-dsh.ps1 -DryRun            # 只列清单，不写任何文件
 ```
 
-**这是「一键部署」的核心。** 实测 13 个 bundle 约十几秒装完，
+**这是「一键部署」的核心。** 实测 16 个公共 bundle 约十几秒装完，
 `dependencies` 与 `dsh.profile.bundles` 自动对齐 —— **不需要在 DSH 里逐个点**。
+它还会额外做三件事（缺一换机就坏）：
+
+1. 从**本地源码**装 2 个自研宿主插件（`dsh-mobile-gateway`、`dsh-rea`）——
+   它们**没发 npm**，直接 `dsh plugin add` 会 404；
+2. 写机器级 `<dsh-home>/cordis.patch.yml`（三行宿主插件）；
+3. 复制机器级 `<dsh-home>/node_modules/` 副本（浏览器半边按此路径解析）。
+
+> 🔴 **装完必须重启 DSH**（Node ESM 不热重载；且运行中改 patch 会让设置写入的
+> revision 乐观锁错位，表现为「设置保存不了」）。
 
 > **为什么能一条命令搞定**（2026-10-12 实测）：
 > `dsh plugin --profile <p> add <pkg>` 一条命令干三件事 ——
@@ -111,7 +128,9 @@ bash scripts/apply.sh --dsh
 - **路径要适配**：模板里的 `/home/caixuf/` 需替换为新机实际 `$HOME`
 - **密钥要手填**：见 `intent/secrets.md`，AI **不应**尝试自动获取或生成密钥
 - **free-model 走 npm**（模板已是 `^2.1.0`）；若见到 `file:` 引用那是旧机残留，别照抄
-- **WSL fork 是选装**，不在模板默认清单里 —— 见下方「WSL fork」节
+- **WSL fork 是选装**，不在模板默认清单里，且**本机当前已回滚成官方版** —— 见下方「WSL fork」节
+- 🔴 **`dsh-sync` 的 pull 侧当前是坏的**（远端没有 `main` 分支，详见 `intent/dsh-sync-配置清单.md`）——
+  新机别指望「拉回来」，先按那份文档把分支问题解决
 
 ### 第 6 步：验证
 
@@ -137,13 +156,14 @@ bash scripts/apply.sh --dsh
 
 | 项 | 旧机值 | 说明 |
 |---|---|---|
-| Windows 用户名 | `20247` | 出现在 DSH 的 `link:` 依赖（`templates/dsh/package.json` 的 `dsh-wsl-workspace`）、`.wslconfig` 路径中 |
+| Windows 用户名 | `20247` | 出现在 `.wslconfig`、若干文档路径与脚本默认值中。**模板 `templates/dsh/package.json` 已不含任何 `link:`**（2026-10-14 复核），故此项不影响 `install-dsh.ps1` |
 | WSL 用户 | `caixuf` | 出现在 dotfile 路径、`.npmrc` 的 prefix |
 | 宿主名 | `caixuf2` | 出现在 `intent/wsl.md` 的机器标注；`.gitconfig` 里只有 `[credential] helper = store`，**不含宿主名** |
 | 代理端口 | **`7897`** ＝ 真实代理（singcore，只绑 `127.0.0.1`）；`7898`/`7899`/`7892` ＝ netsh portproxy 转发到 7897 的垫片 | ⚠️ **不是并列的多个代理**。`7899` 是 `intent/wsl.md` 指定的**推荐同名转发**口，别漏。改候选端口见 `intent/wsl.md`（模板用 `CANDIDATE_PORTS`） |
 | WSL 网络模式 | 旧机 `mirrored`；**本机必须 NAT + 宿主 portproxy** | 🔴 本机 **开 mirrored 总是失败**，**不要**加 `networkingMode=mirrored`（那些 portproxy 垫片就是为此存在的正式设计）。判据只有一条：代理**实测能出网** |
 | free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@^2.1.0`，新机优先用 npm 版**，无需 tgz（本机 2026-10-12 已切） |
-| **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | ⚠️ **该目录不受版本控制**（所在目录不是 git 仓）。DSH 用 `link:` 指向它，删了就装不上 |
+| **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | 🔴 **2026-10-14 实测：该目录与本机 WSL 源仓都已不存在，fork 已回滚**。新机**默认不要装** fork（用官方 `^0.7.5`）；确有需要再按下面「WSL fork」重建 |
+| 主机地址 | VPS 公网 IP + frp token | 见 `templates/dsh/frpc.toml` 的三处占位符与 `intent/新机器复刻清单.md` 第 3 步 |
 
 ### WSL fork：**选装**，不在模板默认清单里
 
@@ -156,14 +176,24 @@ bash scripts/apply.sh --dsh
 改动源码保存在 **`forks/dsh-wsl-workspace/`**（MIT，保留上游版权声明），
 只含源码与测试，**不含 `lib/` 构建产物**（`npm run build` 生成）。
 
-| 位置 | 角色 | 受版本控制 |
-|---|---|---|
-| `forks/dsh-wsl-workspace/`（本仓） | **改动源码** + `README.fork.md`（改动说明、哨兵、构建/测试/同步命令） | ✅ |
-| `<Windows 工作目录>\dsh-wsl-workspace-fork`（本机） | **运行副本**，DSH 的 `node_modules` 用 junction 指向它 | ❌ |
-| `~/code/dsh-wsl-workspace`（本机 WSL） | 开发用 git 仓，分支 `feat/wsl-user-skills-075` @ `f1f30d2` | ✅（仅本机） |
+> 🔴 **2026-10-14 实测：fork 已不在本机运行。**
+> 实装的 `node_modules/dsh-wsl-workspace` 是**真实目录、官方 0.7.5**，
+> fork 的标志符号（`discoverUserSkillRoots` / `USER_DSH_RANK` / `resolveDistributionHome`）
+> 在实装 `lib/` 里**各 0 命中**；`package.json` 里是 `^0.7.5` 而非 `link:`；
+> 两个运行/开发目录都不存在。
+> **后果**：WSL 用户级 skill 不再被加载 —— 当前 WSL 侧带 `SKILL.md` 的 skill
+> 只有 `~/.claude/skills` 7 个、`~/.agents/skills` 9 个（旧文档写的 61/62 已失效）。
+> 详见 `intent/dsh.md` 的「WSL 用户级 skill fork」一节。
 
-> ✅ **单点风险已解除。** 此前那 176 行改动只存在于本机 WSL 的 `~/code/`，
-> WSL 一重装就没了。现在它们在本仓里，跟着仓库走。
+| 位置 | 角色 | 受版本控制 | 现状（2026-10-14） |
+|---|---|---|---|
+| `forks/dsh-wsl-workspace/`（本仓） | **改动源码** + `README.fork.md`（改动说明、哨兵、构建/测试/同步命令） | ✅ | ✅ 在（重建的唯一来源） |
+| `<Windows 工作目录>\dsh-wsl-workspace-fork`（本机） | **运行副本**，DSH 的 `node_modules` 用 junction 指向它 | ❌ | 🔴 **不存在** |
+| `~/code/dsh-wsl-workspace`（本机 WSL） | 开发用 git 仓，分支 `feat/wsl-user-skills-075` @ `f1f30d2` | ✅（仅本机） | 🔴 **不存在** |
+
+> ✅ **有价值的部分已保住。** 此前那 176 行改动只存在于本机 WSL 的 `~/code/`，
+> WSL 一重装就没了。现在它们在本仓里，跟着仓库走 ——
+> **本机那份丢了，但源码在仓库里，随时能重建。**
 
 **什么时候才需要装这个 fork？** 你在 WSL 里有用户级 skill 目录
 （`~/.claude/skills` 或 `~/.agents/skills`，数一下有多少个）。

@@ -179,6 +179,18 @@ do_dsh() {
 
     hr "复制三件（先备份）=="
     mkdir -p "$TARGET"
+
+    # --- 3) 查【目标 patch 里的本地密钥】：模板是不含密钥的，覆盖会把它抹掉 ---
+    #     模板 templates/dsh/cordis.patch.yml 的 dsh-sync 段**只有 token 注释、没有值**
+    #     （这是刻意的，仓库公开）。本机实机的 token 一旦被模板覆盖就没了，
+    #     表现为 dsh-sync 下次同步鉴权失败。
+    _epatch="$TARGET/cordis.patch.yml"
+    if [ -f "$_epatch" ] && grep -qE '^[[:space:]]+token:[[:space:]]*["'"'"']?[A-Za-z0-9_-]{20,}' "$_epatch" 2>/dev/null; then
+        warn "⚠️ 目标 cordis.patch.yml 含**明文 token**（dsh-sync 等），覆盖后会丢失："
+        warn "    模板里那一行只有注释占位（仓库公开，不放密钥）。"
+        warn "    处置：先备份 token，覆盖后**重新填回**，或干脆别跑本步、手工合并。"
+    fi
+
     STAMP=$(date +%Y%m%d-%H%M%S)
     for f in package.json cordis.patch.yml pnpm-workspace.yaml; do
         src="$REPO/templates/dsh/$f"
