@@ -45,6 +45,17 @@ scripts/
   check-secrets.sh      提交前密钥扫描（⚠️ 手动跑，无 CI 强制）
 ```
 
+> 🔴 **换机必须 clone 的两个自研仓** —— 放到**本仓的同级目录**，
+> 否则 `install-dsh.ps1` 会跳过它们（它们**未发 npm**，`dsh plugin add`
+> 必 404，这是**预期行为不是故障**）：
+>
+> ```
+> <同一父目录>/
+>   ├─ dsh-personal-setup/     ← 本仓
+>   ├─ dsh-native-mobile/      ← git clone https://github.com/caixuf/dsh-native-mobile.git
+>   └─ dsh-rea/                ← git clone https://github.com/caixuf/dsh-rea.git
+> ```
+
 > 🔴 **脚本分两个宿主跑**：
 > - `apply.sh` / `audit.sh` / `audit-dsh-drift.sh` 在 **WSL**（管 dotfile、systemd、drift 审计）
 > - `install-dsh.ps1` 在 **PowerShell**（管 DSH bundle 安装）
@@ -236,9 +247,24 @@ bash scripts/apply.sh --dsh
 | 组件 | 仓库 | 说明 |
 |---|---|---|
 | **ccp** | https://github.com/caixuf/claude-code-providers | Claude Code Provider Switcher。一键 `bash install.sh`。**必须克隆到 `~/code/claude-code-providers`**（`ccp sync` 按此路径查找） |
+| **dsh-native-mobile** | https://github.com/caixuf/dsh-native-mobile | 🔴 **自研**，含 `dsh-mobile-gateway`（原生移动端网关）。**未发 npm**，`dsh plugin add` 必 404 —— 只能从本地源码装。须 clone 到 **`dsh-personal-setup` 的同级目录**（`install-dsh.ps1` 靠相邻关系发现） |
+| **dsh-rea** | https://github.com/caixuf/dsh-rea | 🔴 **自研**，逆向工程助手插件。**未发 npm**，同样只能从本地源码装 + 同级目录 |
 | **dsh-wsl-workspace** | 上游 https://github.com/dsh-wsl-workspace-maintainers/dsh-wsl-workspace | 本机装的是**本地 fork**（分支 `feat/wsl-user-skills-075` @ `f1f30d2`），源码已随本仓 `forks/dsh-wsl-workspace/` 入库（见下「fork 例外」）。⚠️ 上游 `0.7.7` **重写了 preset 派生机制**，装上会让所有 WSL 会话报 `Unknown agent preset: wsl-standard` |
 | DSH 本体 | https://github.com/deepseek-ai/deepseek-harness | 官方 |
 | `dsh-our-free-model` | **npm：`dsh-our-free-model`**（另有旧机 `file:` tgz 私存副本） | ✅ 作者**已正式发布到 npm**（`^2.1.0`，peer `^0.2.0-rc.1` 匹配 `0.2.0-rc.2`），直接装即可；旧机那条 `file:` 依赖**不必**带到新机 |
+
+> 🔴 **`dsh-mobile-gateway` / `dsh-rea` 这类自研插件没发 npm。**
+> 仓库里有它们的 `dependencies` 条目，但 `dsh plugin add` 会 404 ——
+> 那是**预期行为，不是故障**。`install-dsh.ps1` 会自动从同级目录的源码装。
+> 换机时记得 clone（否则脚本会打印 `git clone` 提示并跳过）：
+>
+> ```bash
+> git clone https://github.com/caixuf/dsh-native-mobile.git
+> git clone https://github.com/caixuf/dsh-rea.git
+> ```
+>
+> ⚠️ **别只查 npm 就断定「没有这个插件」** —— 自研插件只在 git 上。
+> 详细步骤见 `intent/新机器复刻清单.md`（那份文件就是为此存在的）。
 
 **原则**：仓库**只存"如何获取"与"配置意图"**，不存第三方源码。
 这样上游更新时，新机 `git pull` 即可，不必从本仓库同步过期副本。
