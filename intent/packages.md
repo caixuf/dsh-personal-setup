@@ -93,14 +93,14 @@ sudo apt install -y cloc ffmpeg libattr1 ncurses-base ncurses-bin
 |---|---|
 | `cloc` | 代码行数统计 |
 
-## 2. npm 全局包（13 个）
+## 2. npm 全局包（14 个）
 
 ```bash
 npm i -g \
   @anthropic-ai/claude-code @openai/codex @github/copilot copilot-api command-code \
   @tencent-ai/codebuddy-code cline opencode-ai \
   @larksuite/cli @lark-project/meegle \
-  harness-agent antigravity-claude-proxy \
+  harness-agent antigravity-claude-proxy skillui \
   pnpm
 ```
 
@@ -116,9 +116,23 @@ npm i -g \
 | `@larksuite/cli` / `@lark-project/meegle` | 飞书 CLI（私有 registry 作用域 `@lark-codem`） |
 | `harness-agent` | DSH 相关 |
 | `antigravity-claude-proxy` | ⚠️ **已禁止默认拉起**（自打 Cloud Code，封号风险）。原文档此处写「见 `wsl.md` 注释」，但 `wsl.md` 里并无该内容 —— 已改为就地说明 |
+| **`skillui`** | 🎨 **设计体系提取器**（MIT，★2.4k，20k 下载/月）。`skillui --url <网址>` / `--repo <仓库>` / `--dir <目录>` → 从真实产品提取配色/字号/间距/动效，产出 `.skill`。**给 AI 审美提供"参照物"，不靠想象模仿。** 见下方「装它要补一步」 |
 | **`pnpm`** | ⚠️ `corepack enable` 会因 `/usr/local/bin` 不可写而失败，改用 `npm i -g pnpm` |
 
 **注意**：`~/.npmrc` 里 `prefix=/home/caixuf/.npm-global`，全局包装到**用户目录**，非 `/usr/local`。
+
+### ⚠️ 装 `skillui` 必须补一步（2026-10-14 实测）
+
+npm 12+ 默认拦截依赖的 install scripts，**esbuild 的 postinstall 会被跳过**，
+结果 esbuild 缺二进制、`skillui` 能打印 help 但**实际分析会挂**。
+
+```bash
+npm i -g skillui
+npm rebuild -g esbuild      # ← 漏这步就白装
+```
+
+实测：漏了这步时 `skillui --help` 正常，但 `node_modules/esbuild/bin/esbuild` 不存在。
+
 
 ## 3. pip 用户级包
 

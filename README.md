@@ -32,7 +32,7 @@ templates/              ← 【是什么】可直接复制、不含密钥
                         pnpm-workspace.yaml / cordis.machine-patch.yml /
                         frpc.toml / frps.toml / caddy/）
   proxy.sh              代理垫片（部署件，见 intent/wsl.md）
-  skills/               自建 skill（当前：evidence-boundary，见 intent/dsh.md）
+  skills/               自建 skill（evidence-boundary 证据边界 / ui-design 界面设计，见 intent/dsh.md）
 forks/                  ← 【例外】本机 fork 的第三方源码（仅源码，不含构建产物）
   dsh-wsl-workspace/    WSL 用户级 skill 补丁（基线 0.7.5）；说明见其 README.fork.md
                         🔴 **2026-10-14 起本机已回滚成官方版**，源码留此备重建

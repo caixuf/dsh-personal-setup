@@ -1652,26 +1652,56 @@ $h = @{ Origin="http://127.0.0.1:19387"; Referer="http://127.0.0.1:19387/" }
   ForEach-Object { "[$($_.key)] " + (($_.skills | ForEach-Object { $_.name }) -join ', ') }
 ```
 
-实测输出（2026-10-12，**装 fork 前**）：
+实测输出（2026-10-14，**装完两个自建 skill 后**）：
 ```
 [bundled     ] diagnose-windows-sandbox-acl, office-docx, office-pptx, office-xlsx
-[user-dsh    ] evidence-boundary          ← 自建，level=user-dsh, modelInvocable=true
-[user-agents ] tabbit
+[user-dsh    ] evidence-boundary, ui-design      ← 两个自建，level=user-dsh, modelInvocable=true
+[user-agents ] 63 个（WSL 用户级 skill，经 fork 可见）
 ```
 
-**✅ 生效验证（装 fork 后，2026-10-12 实测）**：
+### 📌 本仓库自建 skill：`ui-design`（2026-10-14）
+
+**位置**：`~/.dsh/skills/ui-design/SKILL.md`（模板在 `templates/skills/ui-design/`）
+
+**为什么存在**：用户直接指出「**你做东西总是审美很差**」。复盘当天的真实失败：
+
+| 我做的 | 为什么是错的 |
+|---|---|
+| 让用户把壁纸雾层调到 `lightFog 65-75` | **凭感觉给数值**，没算对比度 |
+| 用户说「字体颜色很重要，不同壁纸下可见效果不同」 | **完全没接住** —— 那是设计诉求，我当成了功能问题 |
+| 挑主题插件看「月下载 + 有无 contrast guard」 | 下载量是**采用度**，不是**好不好看** |
+| 换掉 skin-center 的理由是「设置项找不到 + 静默失败」 | 全程**没人问过它好不好看** |
+
+**这条 skill 治的不是"审美能力"，是"不许假装有"。** 四条红线：
+
+1. **禁止凭感觉给数值** —— 要算 WCAG 对比度，或明确说"我给不出可靠数值"
+2. **先声明标准再动手** —— 目的 / 层级 / 约束 / **不确定项**（第 4 项逼 AI 认怂）
+3. **不许独自决定"好不好看"** —— 给 2-3 候选让用户拍板；有参照物就提取，不凭印象模仿
+4. **对比度能算就算** —— 正文 4.5:1、大字 3:1，附可跑的 JS 函数
+
+**配套工具**：`skillui`（见 `intent/packages.md`），从真实产品提取设计体系当参照物。
+**有参照物时优先提取，不靠想象** —— 这条 skill 与 `evidence-boundary` 同源：
+一个管「结论真不真」，一个管「决定好不好」，都是**不许拿不确定的东西当确定的**。
+
+**安装**：
+```bash
+mkdir -p ~/.dsh/skills/ui-design
+cp templates/skills/ui-design/SKILL.md ~/.dsh/skills/ui-design/
+```
+
+**✅ 生效验证（装 fork 后，2026-10-14 实测）**：
 
 ```
 [bundled     ]  4 个
-[user-dsh    ]  1 个   （evidence-boundary）
-[user-agents ] 62 个   （imfl-* 28、lark-* 30、meegle、tabbit …）
+[user-dsh    ]  3 个   （evidence-boundary、ui-design、tabbit）
+[user-agents ] 63 个   （imfl-* / lark-* / meegle / tabbit …）
 ──────────────────────
-合计           67 个   ← 装 fork 前只有 5 个
+合计           70 个   ← 装 fork 前只有 5 个
 ```
 
-⚠️ **数字口径**：WSL 侧 `~/.claude/skills` 是 **61** 个；
-API 的 `user-agents` 组是 **62** 个 —— 因为 `~/.agents/skills` 除链接目标外
-还含 Windows 侧独立写入的 `tabbit`。两个数都对，**口径不同**，别混用。
+⚠️ **数字口径**：`user-agents` 组会随机器上装了哪些工具而变（2026-10-12 是 62，
+2026-10-14 是 63）。**WSL 侧 `~/.claude/skills` 是 61 个**，
+API 组数与之不同是因为 Windows 侧还会独立写入工具自己的 skill。两个口径都对，**别混用**。
 
 **设计取舍**：正文仅 ~2KB（每轮都进上下文，刻意写短）；只用 `name` + `description`
 两个 frontmatter 字段（与官方 office-* 一致）；`description` 中英双写触发词以提高命中率。
