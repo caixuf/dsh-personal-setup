@@ -24,8 +24,20 @@
 
 > 🔴 **`dsh-sync/settings.json` 是本机新增的一处明文密钥落点**（2026-10-14 审计发现）。
 > 插件把 GitHub token 明文写在这个文件里，**同时**也写进 profile 的 `cordis.patch.yml`。
-> 两处都不入库；模板 `templates/dsh/cordis.patch.yml` 那份**只留注释、不含 token**。
+> 这两处**都不入库**；模板 `templates/dsh/cordis.patch.yml` 那份**只留注释、不含 token**。
 > 换机时**不要拷这两个文件**，在新机面板里重新填 token。
+>
+> 🔴🔴 **但 `dsh-sync` 自己那个私有库会收到 token**（2026-10-14 补，此前漏记）：
+> 插件的 `plugins` 组把 `cordis.patch.yml` 纳入同步范围，而面板保存会把 token
+> 写进该 patch 的 `config.sync.token` → **每次 push 都把明文 token 打包进提交**。
+> 实测 `caixuf/dsh-sync` **18 个分支全部含同一枚 `ghp_` token**。
+> 本地明文落点实为 **4 处**（另两处：影子仓库工作副本 + 每日快照）：
+> `~/.dsh/dsh-sync/repo/backup/.../cordis.patch.yml`、
+> `~/.dsh/dsh-sync/snapshots/<日期>/plugins/desktop/cordis.patch.yml`。
+>
+> ⚠️ **token 一旦进过提交历史就删不掉**（改文件 / 删分支 / force-push 都无效），
+> 唯一手段是去 GitHub **吊销重发**。详见 `dsh-sync-配置清单.md` 的
+> 「token 会随每次 push 进入远端提交历史」一节。
 
 ## DSH 凭据（`~/.dsh/.credentials.yaml`）
 
@@ -144,6 +156,8 @@ prefix=/home/caixuf/.npm-global
 
 - [ ] `~/.dsh/.credentials.yaml` 中**用到的** ref 已按需填入
 - [ ] 🔴 `~/.dsh/dsh-sync/settings.json` **没有**从旧机复制（含明文 GitHub token）
+- [ ] 🔴 `dsh-sync` 的 token **没有**随着同步被推进 `caixuf/dsh-sync`
+      （已知会发生：`cordis.patch.yml` 在插件的同步范围内；介意就关 `syncPlugins` 或定期轮换）
 - [ ] `~/.config/litellm/proxy.env` 已创建且 `chmod 600`
 - [ ] `gh auth login` 完成，`git push` 可用
 - [ ] 各 AI CLI 已重新登录

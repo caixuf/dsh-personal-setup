@@ -141,8 +141,14 @@ bash scripts/apply.sh --dsh
 - **密钥要手填**：见 `intent/secrets.md`，AI **不应**尝试自动获取或生成密钥
 - **free-model 走 npm**（模板已是 `^2.1.0`）；若见到 `file:` 引用那是旧机残留，别照抄
 - **WSL fork 是选装**，不在模板默认清单里，且**本机当前已回滚成官方版** —— 见下方「WSL fork」节
-- 🔴 **`dsh-sync` 的 pull 侧当前是坏的**（远端没有 `main` 分支，详见 `intent/dsh-sync-配置清单.md`）——
-  新机别指望「拉回来」，先按那份文档把分支问题解决
+- **`dsh-sync` 用 GitHub 托管时是"只推分支"降级模式** —— pull 侧已修好
+  （`main` 已建并设为默认分支，2026-10-14），但**插件不会把改动自动合进 `main`**：
+  PR 创建/合并、`conflict/run`、`prune-branches` 全是 GitCode 专属，
+  每次同步只推一个 `sync/<实例ID>/<时间戳>` 分支，**要人工在网页开 PR 合并**。
+  另：插件会**把 token 提交进它自己那个私有库**（`cordis.patch.yml` 在同步范围内），
+  这一点用 `syncPlugins` 开关控制不了细粒度，见 `intent/dsh-sync-配置清单.md`
+- 🔴 **`dsh-sync` 还需要单独配一次**（面板填 owner/repo/token），
+  `install-dsh.ps1` **不管**这步 —— 见 `intent/新机器复刻清单.md` 第 2.6 步
 
 ### 第 6 步：验证
 

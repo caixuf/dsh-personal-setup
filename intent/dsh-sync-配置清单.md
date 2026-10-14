@@ -1,38 +1,74 @@
 # dsh-sync 首次配置清单（本机 caixuf 台式）
 
 > 生成时间：2026-10-12
-> 最后核对：**2026-10-14**（补入下面「🔴 实测故障」一节）
-> 仓库：https://github.com/caixuf/dsh-sync（**PRIVATE**，已建，默认分支 **不是 `main`**）
+> 最后核对：**2026-10-14**（`main` 已建并设为默认分支；补入「GitHub 托管的功能边界」与「token 会随提交入库」两节）
 
-## 🔴 实测故障：pull 一直失败（2026-10-14 发现，未修）
+> 仓库：https://github.com/caixuf/dsh-sync（**PRIVATE**，默认分支 **`main`**）
 
-本机 `~/.dsh/dsh-sync/state.json` 里 `lastResult` 长期上报：
+## ✅ 已修：pull 长期 404（2026-10-12 发现 → 2026-10-14 修）
+
+**症状**：`~/.dsh/dsh-sync/state.json` 的 `lastResult` 长期上报
 
 ```json
 "pullError": "git fetch: fatal: couldn't find remote ref main"
 ```
 
-**真因**：仓库的**默认分支是 `sync/<实例ID>/<时间戳>`，不是 `main`**。
-用带 token 的 GitHub API 回读确认：
+**真因**：远端**没有 `main` 分支**，默认分支被冻结在
+`sync/caixuf-e81809d4/1791820464099`；而本地写的是 `"branch": "main"` → 每次 pull 都 404。
+push 侧却是好的（每次同步新建一个 `sync/...` 分支推上去）。
+⇒ 多机同步的「拉回来」这一半**从头就是坏的**。
 
+**修法（已执行，2026-10-14）**：建 `main` 并把默认分支切过去。
+
+`main` = **默认分支 tip ⊕ 本机已推分支**（两个根历史用 `--allow-unrelated-histories` 合并），
+这样两边机器的内容都在，且本机自己的备份路径与 `main` 一致 → 下次 push 不再产生新分支。
+
+```bash
+# 在 WSL 里做（本机 Windows git 拿不到凭据，见 README；WSL 的 gh 已授权）
+cd $(mktemp -d) && git clone https://github.com/caixuf/dsh-sync.git repo && cd repo
+DEF=$(git rev-parse origin/sync/caixuf-e81809d4/1791820464099)   # 旧默认分支
+LAP=$(git rev-parse origin/sync/caixuf2-edcc4bfe/1791961078552) # 本机已推分支
+git checkout -b main "$DEF"
+git -c user.name=dsh-sync -c user.email=dsh-sync@local \
+    merge --no-ff --allow-unrelated-histories -m "create main: union" "$LAP"
+git push origin main
+gh api -X PATCH repos/caixuf/dsh-sync -f default_branch=main     # 关键：改默认分支
 ```
-caixuf/dsh-sync  private=true  default_branch=sync/caixuf-e81809d4/1791820464099
+
+**验收判据**（必须是这条命令，不是"看着像好了"）：
+
+```bash
+git fetch <repoUrl> main   # exit=0 才算通；改前是 could not find remote ref
 ```
 
-而本地 `settings.json` / `cordis.patch.yml` 里写的是 `"branch": "main"` ——
-**远端不存在 `main`**，所以每次 pull 都 404。
+> ⚠️ **建 `main` 只修好了 pull 侧，不解决下面那节的"push 永不进 main"。**
 
-**影响**：push 侧是好的（每次同步都新建一个 `sync/...` 分支推上去，远端已有 15+ 分支），
-但 **pull 侧从来没有成功过** ⇒ 多机同步的「拉回来」这一半**实际是坏的**。
+## 🔴 GitHub 托管的功能边界（2026-10-14 读源码确认）
 
-**修法（择一，动手前先备份）**：
+**结论：GitHub 上插件是"只推分支"降级模式，`main` 永远不会自动前进。**
 
-1. 在 GitHub 上把默认分支显式建一个 `main`（从某个 `sync/...` 分支拉），
-   再让插件保持 `branch: main`；或
-2. 把 `branch` 改成**一个真实存在的分支名**（但插件每次同步都推新分支，
-   写死某个 `sync/...` 会随实例 ID / 时间戳失效，**不推荐**）。
+源码 `src/index.js`：`parseRepoUrl()` **只匹配 `gitcode.com`**，GitHub 地址返回 `null` →
+`runPush` 走 `prSkipped` 降级路径：只 `push` 一个 `sync/<实例ID>/<时间戳>` 分支，
+然后把影子库 `reset` 回 `branch`。**PR 创建/合并、`conflict/run`、`prune-branches` 全是 GitCode 专属**
+（插件 README L147 自己也承认）。
 
-⚠️ 这属于「改配置 + 动远端仓库」的操作，**先问用户再动**。
+**后果**：多机"互相同步"在 GitHub 上实质退化成
+**各机往远端堆自己的备份分支 + 人工在网页开 PR 合并**。
+默认分支 tip 就是个 merge commit（`Merge pull request #1 from caixuf/sync/...`）—— 那是人工合出来的。
+
+远程分支还会**线性堆叠**：因为 `fetch main` 一直失败 → `hasRemote=false` → `baseRef` 退化成 `HEAD`
+→ 每个新分支都基于上一个（实测 16 个 `caixuf-e81809d4` 分支呈一条线性链）。
+
+| 想要的能力 | GitCode | GitHub |
+|---|---|---|
+| push 备份分支 | ✅ | ✅ |
+| **自动合并进默认分支** | ✅（PR + merge + 删分支） | ❌ 要人工开 PR |
+| `conflict/run`（AI 冲突处理） | ✅ | ❌ |
+| `prune-branches`（清理遗留分支） | ✅ | ❌ |
+
+**处置建议**：要么接受"人工开 PR"（配合 `intervalMinutes: 1440`，
+一天最多一个分支，见下节），要么换 GitCode 托管（功能完整，但要重建仓 + 改 `repoUrl` + 重填 token，
+属于**切模式**，动手前先确认覆盖旧路径的全部副作用）。
 
 ## 你要填的（设置 → 插件 → dsh-sync → Git 页签）
 
@@ -100,19 +136,43 @@ caixuf/dsh-sync  private=true  default_branch=sync/caixuf-e81809d4/1791820464099
 > 含 GitHub token 明文，且这些快照会被 push 进 `caixuf/dsh-sync`（私有库）。
 > 私有库可接受，但**别把它改成公开**。
 
-## token 纪律（2026-10-14 补充）
+## 🔴 token 会随每次 push 进入远端提交历史（2026-10-14 实测）
 
-实测 token 会**同时**落在两处明文位置：
+**先说结论**：`dsh-sync` 会**把同步用的 GitHub PAT 提交进它自己的仓库**。
+下面那条"两处都不入库"**只对 `dsh-personal-setup` 成立** ——
+`dsh-sync` 那个私有库会**收到** token，而且**进了提交历史就删不掉**。
+
+**机制**：插件的 `plugins` 组 `includeFiles` 含 `cordis.patch.yml`
+（`src/index.js:716`），而面板保存会把 token 写进该 patch 的 `config.sync.token`
+→ 每次 push 都把带明文 token 的 patch 打包进提交。
+
+**实测**：远端 18 个分支**全部**含同一枚明文 `ghp_` token，路径
+
+```
+backup/<实例ID>/plugins/desktop/cordis.patch.yml
+```
+
+**本地明文落点共 4 处**（不止两处）：
 
 | 位置 | 说明 |
 |---|---|
-| `~/.dsh/dsh-sync/settings.json` | 插件的本地设置 |
+| `~/.dsh/dsh-sync/settings.json` | 插件的自持设置 |
 | `~/.dsh/profiles/desktop/cordis.patch.yml` | profile patch 的 `dsh-sync` 段 |
+| `~/.dsh/dsh-sync/repo/backup/.../cordis.patch.yml` | 影子仓库的工作副本 |
+| `~/.dsh/dsh-sync/snapshots/<日期>/plugins/desktop/cordis.patch.yml` | 每日快照 |
 
-**两处都不入库**。模板 `templates/dsh/cordis.patch.yml` 里那一行是**注释占位**，
+**"两处都不入库"的正确范围**：模板 `templates/dsh/cordis.patch.yml` 里那一行是**注释占位**，
 `git grep ghp_` 在本仓库工作区与**全部 git 历史**里都是 0 命中（2026-10-14 复核）。
+—— 但这**管不到 `dsh-sync` 自己那个库**。
 
-⚠️ 若 token 曾出现在对话/截图里，**视为已泄漏**（见 `secrets.md`），去 GitHub 吊销重发。
+⚠️ **处置**：
+
+1. **只要 `syncPlugins: true`，新 token 下次 push 还会被提交进去** ——
+   这是插件设计，不是配置错误。想彻底避免只有两条路：
+   关掉 `syncPlugins`（或整个 git 同步），或**接受**"私有库 + 定期轮换 token"。
+2. 若 token 曾出现在对话/截图里 → **视为已泄漏**（见 `secrets.md`），去 GitHub 吊销重发。
+   ⚠️ **吊销是唯一有效手段**：token 已在提交历史里，改文件 / force-push / 删分支都清不掉。
+3. 吊销重发后，本机要同时更新 `settings.json` 与 profile patch（或直接在面板重填）。
 
 ## 配完后的验证
 
@@ -134,8 +194,13 @@ Get-Content "$env:USERPROFILE\.dsh\dsh-sync\settings.json"
 
 推荐：
 1. 这台（caixuf 台式）配好 → 测通 → **先不合**
-2. 其它 2-3 台各配同���个仓库 → 各自手动触发一次同步
+2. 其它 2-3 台各配同一个仓库 → 各自手动触发一次同步
 3. 确认都进来了，再改成自动
+
+> ⚠️ **2026-10-14 实测补正**：上面第 3 步在 **GitHub 托管下做不到"写进共享分支"** ——
+> 每台机器的 push 都只落在自己的 `sync/<实例ID>/<时间戳>` 分支上（见「GitHub 托管的功能边界」节）。
+> 想让 A 机的改动被 B 机 pull 到，必须**人工在网页把这个分支 PR 合并进 `main`**。
+> 换机时最容易误判成"同步坏了"，实际是模式如此。
 
 ## ⚠️ 那个 Windows 路径坑：已自动处理
 
