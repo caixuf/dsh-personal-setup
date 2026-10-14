@@ -72,6 +72,27 @@ else
 fi
 
 echo
+# --- 冲突标记残留检查 ---------------------------------------------------
+# 2026-10-14 教训：rebase 冲突「解完」后误把 <<<<<<< / >>>>>>> 当正文一起提交。
+# 提交前统一拦一道。
+found_conflict=0
+while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    case "$f" in
+        *node_modules*|*.png|*.jpg|*.webp|*.gif|*.zip) continue ;;
+    esac
+    hits=$(grep -n '^<<<<<<< \|^>>>>>>> ' "$REPO/$f" 2>/dev/null | head -3)
+    if [ -n "$hits" ]; then
+        printf '  ⚠️  %s 含未清理的冲突标记:\n%s\n' "$f" "$hits"
+        found_conflict=1
+    fi
+done < <(git -C "$REPO" ls-files 2>/dev/null)
+if [ "$found_conflict" -eq 1 ]; then
+    echo
+    echo "❌ 存在未清理的 git 冲突标记 —— 先解决冲突再提交！"
+    exit 1
+fi
+
 # --- 关联仓库扫描 -------------------------------------------------------
 # 2026-10-14 新增：dsh-sync 把含明文 token 的 profile 快照提交进了
 # ~/.dsh/dsh-sync/repo —— 那是**另一个 git 仓库**，本脚本原本扫不到。
