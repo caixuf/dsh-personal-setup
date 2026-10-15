@@ -243,7 +243,11 @@ bash scripts/apply.sh --dsh
 
 以下内容**无法**靠仓库迁移，需人工处理：
 
-- WSL 发行版本身与 `.wslconfig`（需新机自行安装 WSL2）
+- WSL 发行版本身与 `.wslconfig` —— 新机装 **WSL 3**（`wsl --update`，无需 `--pre-release`）
+  并经 `.wslconfig` 开 **`virtiofs`**（`/mnt/c` 写入实测快 6.6 倍；需同时开
+  `virtio=true` 与 `hostFileSystemAccess=true`）。**完整步骤、坑与回滚见
+  `intent/wsl.md` 的「WSL 3.0 升级」一节**（含 issue #40773：单盘挂载失败会静默
+  跳过所有盘，改完必须验证 `/mnt/c` 与 `/mnt/d` 都还在）
 - Windows 侧应用（DSH Desktop 本体）
 - GPU 驱动与 CUDA
 - 各 AI CLI 的**登录态**（`claude` / `codex` / `agy` / `codebuddy` 等需重新登录）

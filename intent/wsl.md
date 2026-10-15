@@ -4,15 +4,121 @@
 
 | 项 | 值 |
 |---|---|
-| 发行版 | `Ubuntu-24.04`（Ubuntu 24.04.4 LTS） |
+| 发行版 | `Ubuntu-24.04`（Ubuntu 24.04.1 LTS） |
 | **WSL 发行版名** | **`Ubuntu`** ← 命令里是 `wsl -d Ubuntu`；⚠️ **主机名才叫 `caixuf2`，别混** |
-| WSL 版本 | WSL2，内核 `6.6.114.1-microsoft-standard-WSL2` |
-| WSL 平台版本 | `2.7.3.0` |
+| WSL 版本 | **WSL 3.0.3**（2026-10-15 从 2.9.11.0 升级，见下方「WSL 3 升级」） |
+| 内核 | `6.18.54.1-microsoft-standard-WSL2` |
 | WSL 用户 | `caixuf`（uid 1000，**sudo 免密**） |
 | 宿主名 | `caixuf2` |
-| 内存/CPU | `.wslconfig` 限 16GB / 12 核，swap 8GB |
+| 内存/CPU | 未在 `.wslconfig` 限制（走默认：宿主 50% 内存 / 全部逻辑核；实测 31Gi / 16 核） |
+| Windows 盘挂载 | **`virtiofs`**（2026-10-15 起；此前是 9p，见下方性能对比） |
 | GPU | NVIDIA RTX 5060 Laptop，`/dev/dxg` 直通可用 |
 | Windows 防火墙 | ⚠️ **三个配置文件（域/专用/公用）全部关闭** —— 见下方「安全」 |
+
+## 🚀 WSL 3.0 升级（2026-10-15 实测完成）
+
+**结论：升级顺利，代理链与全部服务无影响，`/mnt/c` 写入提速 6.6 倍。**
+
+### 版本变化
+
+| 项 | 升级前 | 升级后 |
+|---|---|---|
+| WSL | 2.9.11.0 | **3.0.3.0** |
+| 内核 | 6.18.40.1-1 | **6.18.54.1-1** |
+| MSRDC | 1.2.7214 | 1.2.7391 |
+
+升法是 `wsl --update`（**WSL 3.0 起不再需要 `--pre-release` 标志**，见
+[Phoronix 报道](https://www.phoronix.com/news/Microsoft-WSL-3.0.2)）。本机是 Store 版
+（`MicrosoftCorporationII.WindowsSubsystemForLinux`），可直接升。
+
+### 实测性能：virtiofs vs 9p（这就是"翻倍"的来源）
+
+`/mnt/c` 默认用 **9p**，WSL 3 可换 **virtiofs**。本机实测（32MB 顺序写）：
+
+| 挂载方式 | 32MB 写 | 32MB 读 | 200 个小文件写 |
+|---|---|---|---|
+| `9p`（默认） | **16.5 s** | — | 很慢 |
+| **`virtiofs`** | **2.5 s** | **0.14 s** | 2.5 s |
+
+⇒ **写入提速约 6.6×**。这对 WSL 里跑 `git status` / 前端构建 / 读 Windows 上的仓库
+（`/mnt/c/...`）是质变。
+
+### ⚠️ 怎么开（踩过一次弯路，照这个来）
+
+🔴 **`virtiofs` 配在 `.wslconfig`（Windows 侧）的 `[wsl2]` 段，不是 Linux 侧 `/etc/wsl.conf`。**
+我最初误写进 `wsl.conf` 的 `[automount] options`，那**不生效**（`wsl.conf` 只管 DrvFs 权限选项）。
+
+```ini
+# %UserProfile%\.wslconfig
+[wsl2]
+dnsTunneling=true
+autoProxy=false
+localhostForwarding=true
+virtiofs=true                 # ← 官方标注 experimental
+hostFileSystemAccess=true     # ← 官方文档要求同时开启
+[experimental]
+virtio=true                   # ← 同上
+```
+
+依据：[官方 wsl-config 文档](https://learn.microsoft.com/en-us/windows/wsl/wsl-config)
+原文 —— `virtiofs` | default `false` | *"An experimental setting to use VirtioFS for
+Windows filesystem shares. **Requires `virtio` and `hostFileSystemAccess` to be enabled**."*
+
+改完必须 `wsl --shutdown`（8 秒规则：等 VM 完全停止才生效）。
+
+### 🔴 开之前必须知道的坑
+
+**已知 issue [#40773](https://github.com/microsoft/WSL/issues/40773)**：
+`virtiofs=true` 时，**只要有任意一块盘挂载失败，所有固定盘会被静默跳过**
+（表现为 `/mnt/c` 整个消失，且**不报错**）。
+
+本机有两块盘（C: 258GB / D: 223GB）+ swap，正好命中该风险。**每次改完必须验证两块盘都在**：
+
+```bash
+findmnt -no FSTYPE,SOURCE /mnt/c
+findmnt -no FSTYPE,SOURCE /mnt/d
+ls /mnt/c >/dev/null && ls /mnt/d >/dev/null && echo "两盘都在"
+```
+
+### 升级后验证清单（本次全过）
+
+| 项 | 结果 |
+|---|---|
+| 网关是否变化 | ✅ 未变，仍 `172.18.80.1`（NAT 拓扑不受影响） |
+| 代理 7897/7898/7892 | ✅ 7898/7892 均 200（7897 仍仅绑宿主 loopback，符合设计） |
+| 直连 GitHub | ✅ 200 |
+| WSL git（走 7898） | ✅ `ls-remote` 成功 |
+| `fix-wsl-net.service` | ✅ active，`status=0/SUCCESS` |
+| ollama / docker / containerd | ✅ 全部 active，镜像与模型都在 |
+| GPU `/dev/dxg` | ✅ present |
+| `~/code` 11 个仓库 | ✅ 完好 |
+
+### 回滚
+
+```powershell
+# 1) 配置回滚
+Copy-Item "$env:USERPROFILE\.wslconfig.bak-20261015-1916" "$env:USERPROFILE\.wslconfig" -Force
+wsl --shutdown
+# 2) 版本回滚（如需）
+wsl --update --rollback
+```
+
+WSL 内部配置备份在 `~/wsl3-upgrade-backup-20261015-191602/`
+（含 `wsl.conf`、`fix-wsl-net.service`、`fix-wsl-net.sh`、`gitconfig`、`proxy.sh`、`resolv.conf`、`baseline.txt`）。
+
+> 📌 **升级不会动内核态之外的东西**：`/etc/wsl.conf`、systemd 服务、docker 数据、
+> ollama 模型全部保留。本机升完 `wsl.conf` 内容与升级前逐字一致。
+
+### WSL 3 的其它新能力（本机已验证可用）
+
+- **`wslc.exe`（WSL Containers）**：`wslc --version` → `3.0.3.0`。可在**不装 Docker Desktop**
+  的情况下跑 Linux 容器，命令族有 `container` / `image` / `network` / `registry` /
+  `volume` / `settings` / `system`。
+  ⚠️ **端口陷阱**：`wslc run -p 8080:80` 默认只绑 Windows 的 `127.0.0.1`，
+  **从 WSL 发行版内部访问会连不上**。要跨 WSL 访问必须显式绑 `0.0.0.0`：
+  `wslc run -d -p 0.0.0.0:8080:80 ...`，或把
+  `%LOCALAPPDATA%\wslc\settings.yaml` 的 `session.defaultBindingAddress` 设为 `0.0.0.0`。
+- `networkingMode` 新增 `consomme` 取值（官方文档；本机仍用默认 NAT，未切换）。
 
 ## ⚠️ 网络拓扑：本机用 **NAT + portproxy**，因为 mirrored 在这台机器上起不来
 
