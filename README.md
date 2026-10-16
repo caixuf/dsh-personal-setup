@@ -15,7 +15,7 @@ intent/                 ← 【为什么】人可读的意图。AI 的核心决�
   conventions.md        ★ 先读这份：协作方式、他最烦什么、本机跨项目通用坑
   dsh.md                DSH 插件/主题/配置的取向与踩过的坑
   wsl.md                WSL 环境：代理机制、网络模式、dotfile 结构
-  services.md           本地服务：litellm / privoxy 端口分配与用途
+  services.md           本地服务：litellm / privoxy / **hy-memory 2.0** 端口分配与用途
   packages.md           软件包清单：apt / npm / pip 分组与用途
   secrets.md            【只有变量名，没有值】密钥清单与获取方式
   remote-选型.md        ★ 手机远程方案选型：20+ 候选的 peer 兼容性对照表
@@ -32,6 +32,8 @@ templates/              ← 【是什么】可直接复制、不含密钥
                         pnpm-workspace.yaml / cordis.machine-patch.yml /
                         frpc.toml / frps.toml / caddy/）
   proxy.sh              代理垫片（部署件，见 intent/wsl.md）
+  hy-memory/            本地记忆服务部署件：env.sh（无密钥）+ embed_server.py，
+                        见 intent/services.md 第 6 节
   skills/               自建 skill（evidence-boundary 证据边界 / ui-design 界面设计 /
                         pwsh-windows-ops Windows PowerShell 操作手册，见 intent/dsh.md）
   dsh-sync/             ★ **私有同步仓 `caixuf/dsh-sync` 的部署件**（workflow 模板 + 新建仓步骤，见其 README.md）

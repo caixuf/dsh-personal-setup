@@ -8,10 +8,12 @@
 | **4001** | `127.0.0.1` | litellm | litellm 代理本体 |
 | **9900** | `0.0.0.0` | python3 | IMFL 自动测试云平台（`imfl-autotest.service`） |
 | **8118** | `127.0.0.1` / `[::1]` | privoxy | HTTP 代理（遗留） |
+| **19527** | `127.0.0.1` | python（hy_memory.server） | Hy Memory 2.0 服务端（2026-10-16 起） |
+| **19528** | `127.0.0.1` | uvicorn（embed_server.py） | 本地 fastembed 嵌入 shim，给 19527 提供 `/v1/embeddings` |
 | 22 | `0.0.0.0` | sshd | |
 | 631 | `0.0.0.0` | cups | 打印 |
 
-**端口冲突排查**：`ss -tlnp | grep -E "4000|4001|8118|9900"`
+**端口冲突排查**：`ss -tlnp | grep -E "4000|4001|8118|9900|19527|19528"`
 
 ## 1. litellm 模型网关（4001）
 
@@ -195,6 +197,57 @@ Error: Client network socket disconnected before secure TLS connection was estab
 （见 `intent/wsl.md` 的「幽灵代理陷阱」）。修复：确保 `~/.proxy.sh` 与
 `wsl-proxy-autofix` 正常，然后重连 IDE。
 
+## 6. Hy Memory 2.0 —— 本地记忆服务（19527 + 19528）
+
+> 2026-10-16 本机 WSL 实测跑通的**技术选型 spike**。它**没有**接进 DSH
+> （没挂 `dsh-mnemon` 的任何 provider），目前是独立进程，**用不到可忽略**。
+> 但它占两个端口且带一个密钥文件，换机清单里必须知道它存在。
+
+**是什么**：腾讯混元开源的双系统认知记忆框架（Apache-2.0，PyPI `hy-memory`），
+定位是 `dsh-mnemon` 之外的**另一条记忆路线**（本地优先，嵌入不外发）。
+
+| 项 | 值 |
+|---|---|
+| 目录 | `~/hy-memory-spike`（**不在** `~/code/`，未接任何外部仓） |
+| venv | `~/hy-memory-spike/.venv`（Python 3.12.3） |
+| 版本 | `hy-memory==2.0.1`，`fastembed==0.9.0`，`fastapi==0.143.2`，`uvicorn==0.54.0` |
+| 配置 | `~/hy-memory-spike/env.sh`（模板：`templates/hy-memory/env.sh`） |
+| 嵌入 shim | `~/hy-memory-spike/embed_server.py`（模板：`templates/hy-memory/embed_server.py`） |
+| 数据 | `~/hy-memory-spike/data/`（SQLite + 索引，全本地） |
+| 密钥 | `~/hy-memory-spike/minimax.key`（chmod 600，**不入库**，见 `intent/secrets.md`） |
+| 抽取 LLM | MiniMax 官方 API 直连（`https://api.minimaxi.com/v1`，模型 `MiniMax-M3`） |
+| 嵌入 | 本地 CPU `BAAI/bge-small-zh-v1.5`，**512 维** |
+
+**启动（当前是手动起的，没有 systemd 单元）**：
+
+```bash
+cd ~/hy-memory-spike && source env.sh
+# ① 嵌入 shim（必须先起，19527 启动时要探它）
+.venv/bin/uvicorn embed_server:app --host 127.0.0.1 --port 19528 --log-level warning
+# ② 记忆服务本体
+.venv/bin/python -m hy_memory.server --port 19527
+```
+
+**实测性能**：写入 3.5–5.4s / 条，召回 0.02–0.08s，数据全本地。
+
+### 踩过的坑（别重复踩）
+
+| 坑 | 现象 | 结论 |
+|---|---|---|
+| 经本机 LiteLLM(4000) + `cline-deepseek-v4-pro` 抽取 | 写入 **37–74s**；且被网关 400 拒（`system message must have content`，因其**空 system message**） | **直连 MiniMax**，两个坑一起消失 ⇒ 那是该模型的脾气，不是 hy_memory 不兼容 |
+| 不加 `MEMORY_LLM_EXTRA_BODY` | MiniMax 把 `<think>` 塞进 content，污染抽取 JSON（completion 116→24 token） | 必须 `'{"thinking":{"type":"disabled"}}'` |
+| `trae-*` 系模型（含 `trae-minimax-m3`）经网关 | 一律 `content=None` 不可用 | 直连那家的 `MiniMax-M3` |
+| 自带 server 的 `/api/v1/add` **不透传 `scene`** | 自动路由把带 tool_calls 的编码轨迹判成 chat，facts/experiences/diff-chain 拿不到 | 要 coding/working 两层记忆**必须自己包一层 SDK** |
+| 模型走本机 SOCKS 代理下载 | HF 拉不下来 | `pip install socksio` |
+| `SIGTERM` 停不掉 hy_memory server | 忽略信号 | `ss -lptnH 'sport = :19527'` 找 pid 后 `SIGKILL` |
+| 想在本机跑 30B-A3B 权重 | 没 GPU | ❌ 跑不了也不需要 —— SDK 只是 OpenAI 兼容客户端，权重是独立项目 |
+
+> ⚠️ **MemHub 桌面端不支持 Windows**，只能在这台 WSL 里用。
+
+**要不要接进 DSH 的判断依据**：它目前只是候选。若将来要接，
+入口是 `dsh-mnemon` 的 provider 机制（见 `intent/dsh.md`），
+届时需另开一条记录，本节只负责「换机怎么把它重建起来」。
+
 ## 服务启动顺序（重要）
 
 ```
@@ -217,7 +270,7 @@ ccp use <profile>（生成 env.sh，指向 127.0.0.1:4000）
 
 ```bash
 # 端口
-ss -tlnp | grep -E "4000|4001|8118|9900"
+ss -tlnp | grep -E "4000|4001|8118|9900|19527|19528"
 
 # 代理
 proxy_test
@@ -231,4 +284,8 @@ echo $ANTHROPIC_BASE_URL         # 期望 http://127.0.0.1:4000
 
 # IMFL 平台
 curl -s http://127.0.0.1:9900/ | head -c 200
+
+# Hy Memory（可选，不用可跳过）
+curl -s http://127.0.0.1:19528/health                 # → {"ok":true,"model":"BAAI/bge-small-zh-v1.5","dims":512}
+curl -s http://127.0.0.1:19527/health                 # → {"status":"alive"}
 ```

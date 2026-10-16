@@ -11,6 +11,10 @@
 *.service       text eol=lf
 *.mount         text eol=lf
 
+# 2026-10-16 补：templates/hy-memory/embed_server.py 要拷进 WSL 跑，
+# 与 .sh 同理锁 LF（Python 能吃 CRLF，但混行尾会让 diff 噪声化）
+*.py            text eol=lf
+
 # 其他文本文件统一用 LF，避免无意义的行尾 diff
 *.md            text eol=lf
 *.yml           text eol=lf

@@ -21,6 +21,7 @@
 | `~/.npmrc` | npm registry token（若有） | — |
 | `~/.git-credentials` | git 凭据（credential.helper=store） | — |
 | `~/.claude*` / `~/.codex/` / 各 CLI 的登录态 | 各 AI CLI | — |
+| `~/hy-memory-spike/minimax.key` | Hy Memory 2.0 抽取 LLM 用的 MiniMax 官方 API key（2026-10-16 新增，chmod 600） | 1 |
 
 > 🔴 **`dsh-sync/settings.json` 是本机新增的一处明文密钥落点**（2026-10-14 审计发现）。
 > 插件把 GitHub token 明文写在这个文件里，**同时**也写进 profile 的 `cordis.patch.yml`。
@@ -47,6 +48,12 @@
 >
 > 📌 `scripts/check-secrets.sh` 已扩展为**跨仓扫描**（本仓 + dsh-sync /
 > dsh-native-mobile / dsh-rea 的 git 跟踪文件），这类问题能持续被发现。
+
+> 🔴 **Hy Memory 的 key 是独立一份**（2026-10-16）：`~/hy-memory-spike/minimax.key`
+> 是纯文本单行，由 `env.sh` 用 `$(cat ...)` 读进 `MEMORY_LLM_API_KEY`，
+> **不是** `.dsh/.credentials.yaml` 里那个 `MINIMAX_CN_API_KEY` ref。
+> 新机要跑 hy-memory 就单独填这一个文件（`chmod 600`），
+> 其余按 `templates/hy-memory/env.sh` 的注释操作即可。
 
 ## DSH 凭据（`~/.dsh/.credentials.yaml`）
 
@@ -168,6 +175,7 @@ prefix=/home/caixuf/.npm-global
 - [ ] 🔴 `dsh-sync` 的 token **没有**随着同步被推进 `caixuf/dsh-sync`
       （已知会发生：`cordis.patch.yml` 在插件的同步范围内；介意就关 `syncPlugins` 或定期轮换）
 - [ ] `~/.config/litellm/proxy.env` 已创建且 `chmod 600`
+- [ ] （若要 hy-memory）`~/hy-memory-spike/minimax.key` 已填且 `chmod 600`
 - [ ] `gh auth login` 完成，`git push` 可用
 - [ ] 各 AI CLI 已重新登录
 - [ ] **确认没有把任何密钥提交进本仓库**：
