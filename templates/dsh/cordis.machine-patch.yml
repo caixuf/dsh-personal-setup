@@ -19,6 +19,18 @@
     - id: bot-gateway
       name: dsh-bot-gateway
       # 运行时数据默认落 $DSH_HOME/bot-gateway/；一般无需 config
+      #
+      # 2026-10-18 起本机关闭。原因：Telegram 长轮询持续 ECONNRESET，错误累积
+      # 到后来会把 host 一起带崩。
+      #
+      # 🔴 `disabled` 必须写在这一层，只写 profile 层**无效**。加载顺序是
+      #   bundle patches → profile patch → <DSH_HOME>/cordis.patch.yml → overlays
+      # （app.asar 内 dsh-app-boot/lib/index.js:1127-1133 `readProfilePatches`），
+      # home 层在 profile 层**之后**应用。只禁 profile 层的实测表现是：
+      # 配置里写着 disabled: true、`/bot-gateway/` 却照常 200、
+      # `plugin_manager list_plugins` 里仍是 enabled=true / fiberPhase=active。
+      # 恢复时把两个文件的 disabled 一起改成 false。
+      disabled: true
 
     - id: mobile-gateway
       name: dsh-mobile-gateway

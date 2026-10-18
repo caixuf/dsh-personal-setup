@@ -12,15 +12,66 @@
 | `cordis.machine-patch.yml` | **`<dsh-home>/`（上一级！）** | **机器级**补丁：三行宿主插件 |
 | `frpc.toml` / `frps.toml` | 家里客户端 / VPS | FRP 隧道（脱敏模板，含占位符） |
 | `frpc-guard.cmd` | 家里，与 `frpc.exe` 同目录 | **frpc 掉线自愈**（frpc 不是服务，会静默退出） |
+| `run-hidden.vbs` | 与守护脚本同目录 | 🔴 **计划任务必须经它启动**，否则 win11 每次弹一个 WT 窗口（见下） |
+| `start-hidden.mjs` | 同上 | 🔴 **守护内部拉常驻进程必须经它**，`start /min` 会留下真窗口（见下） |
 | `caddy/dsh-mobile.caddy` | VPS | 公网入口白名单（**含封死管理面**） |
 | `lan-bridge/` | 家里（见该目录 README） | **局域网桥**：让配对到 `<lan-ip>:19387` 的手机 App 连上只监听回环的 DSH |
+
+## 🔴 「弹窗」两层根因（2026-10-18 实机定位，缺一不可）
+
+这是本仓排得最久的一个问题：屏幕上**每 2 分钟闪一个 Windows Terminal 窗口**，
+外加一个**常驻不走的 frpc 控制台**。两层都要修，只修一层会以为没修好。
+
+**① 任务宿主层** —— 计划任务的 `<Hidden>true</Hidden>` **只对传统 conhost 生效**。
+Windows 11 把 console 程序托管进 Windows Terminal（`HKCU\Console\%%Startup` 的
+`DelegationTerminal`），所以直连 `.cmd` 的任务每次运行都会弹一个可见的
+`CASCADIA_HOSTING_WINDOW_CLASS` 窗口。
+
+修法：任务动作改成 `wscript.exe run-hidden.vbs "<原.cmd>"`。
+VBS 里 `WScript.Shell.Run cmd, 0, True`（`0` = `SW_HIDE`），wscript 是 GUI 子系统宿主。
+
+**② 子进程层（更隐蔽，是常驻窗口的真凶）** —— 守护脚本内部用 `start "" /min exe`
+拉常驻进程时，`/min` 只是把子进程的控制台**最小化**，窗口依然存在。frpc 一跑几小时，
+那个窗口就一直在任务栏。
+
+修法：`node start-hidden.mjs --log <file> <exe> [args]` ——
+`spawn(..., { windowsHide: true })`（= `CREATE_NO_WINDOW`）让子进程**不创建控制台**，
+`detached` + `unref` 保留「父退出、子继续跑」的语义。
+
+**验证判据（不要只看「任务结果 = 0」）**：
+
+```powershell
+(Get-Process frpc).MainWindowHandle        # 必须是 0
+Get-CimInstance Win32_Process -Filter "Name='conhost.exe'" |
+  Where-Object ParentProcessId -eq (Get-Process frpc).Id   # 必须为空
+```
+
+## 开机自启（2026-10-18 新增）
+
+DSH 本体**不在任何自启动项里**（Run / RunOnce / Startup / 计划任务 / 服务全无），
+重启后只有 frpc 和 LAN bridge 起来，**19387 没人监听**，手机端会连到死端口。
+
+修法：往 Startup 文件夹放一个快捷方式（DSH 自带 `requestSingleInstanceLock`，
+重复启动会立刻 exit 0，不会开第二份）：
+
+```powershell
+$ws = New-Object -ComObject WScript.Shell
+$lnk = $ws.CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\DeepSeek Harness.lnk")
+$lnk.TargetPath = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\DeepSeek Harness.exe"
+$lnk.WorkingDirectory = "$env:LOCALAPPDATA\Programs\DeepSeek Harness"
+$lnk.Save()
+```
+
+> DSH **没有** `--hidden` / `--silent` 启动参数，开机后会正常显示主窗口。
+> 想要「静默进托盘」当前版本做不到，只能接受它开窗。
+
 
 ## 当前实机状态（2026-10-18 实测，模板即按此对齐）
 
 | 项 | 值 |
 |---|---|
 | DSH 内核 | **0.2.1-rc.2** |
-| bundle 数 | **18**（`dsh-whale-girl-pet` 已被用户关掉、不在 bundles 里，但**模板保留它**作为默认基线） |
+| bundle 数 | **28**（含 0.2.1 新增的 10 个官方 `experimental-*` / `subagent-*`；`dsh-whale-girl-pet` 已关掉但**模板保留**作为默认基线，故模板与其依赖各 18 条） |
 | 依赖条数 | **18**（含 2 个自研宿主插件：`dsh-mobile-gateway` / `dsh-rea`） |
 | 机器级 patch | **3 行**：`dsh-bot-gateway` / `dsh-mobile-gateway` / `dsh-rea` |
 | 机器级 `node_modules` | 同上 3 个包各一份副本 |
@@ -28,6 +79,32 @@
 | `webserver.host` | **`127.0.0.1`**（0.2.1 禁止 `0.0.0.0`，详见下面「0.2.1 适配」） |
 | `remote-web-ui` | **`disabled: true`**（与 0.2.1 冲突，见下） |
 | `dsh-sync.syncOnStartup` | **`false`**（启动同步 15.7s 会堵住模型插件） |
+| `dsh-sync.syncSettings` | **`false`**（0.2.1 起这条路空转，见下「第五/六条」） |
+| `bot-gateway` | **`disabled: true`**（写在机器级 patch，profile 层写无效，见下） |
+| `compatibility.json` | **3 条豁免**（0.2.1 起准入一票否决，见下） |
+
+## 🔴 2026-10-18 追加：两个「静默失效」的配置项
+
+这两条共同点是**配置写着生效、实际没生效**，且都不报错。
+
+5. **`bot-gateway` 的 `disabled` 必须写在机器级 patch**。patch 层顺序是
+   `bundle patches → profile patch → <DSH_HOME>/cordis.patch.yml → overlays`
+   （`dsh-app-boot/lib/index.js:1127-1133` `readProfilePatches`），**home 层最后应用**。
+   只在 `profiles/desktop/cordis.patch.yml` 写 `disabled: true`，会被 home 层那条
+   `insert: bot-gateway`（不带 disabled）覆盖回启用 —— 表现为配置里写着已禁用、
+   `/bot-gateway/` 却照常 200、`plugin_manager list_plugins` 仍是
+   `enabled=true / fiberPhase=active`。两处都要写，恢复时两处一起改。
+
+6. **`dsh-sync` 的 `syncSettings` 是空转**。它的 settings 组固定读
+   `<DSH_HOME>/settings.yaml`（`@weibaohui/dsh-sync/src/index.js:677,708`），
+   而 0.2.1 起设置已经迁进 profile 的 `cordis.patch.yml`，`settings.yaml` 根本不存在
+   → `copyTree` 读失败走 `catch { return }` 静默跳过，**从未备份过任何东西**，
+   却给人「设置已备份」的错觉。已改 `false`；真正的设置源由 `plugins` 组覆盖
+   （其 `includeFiles` 含 `cordis.patch.yml`，同文件 `:716`）。
+   附带好处：settings 组是把明文密钥推上仓库的那条路，关掉后暴露面更小。
+
+> ⚠️ **这两个都不是「配置写错」，而是「写了不起作用」** —— 排障时先确认改动落在
+> 哪一层、真正被读的是哪个文件，别只看配置文件里写的是什么。
 
 ## 🔴 0.2.1 适配（2026-10-17/18 实机踩出来的四条）
 

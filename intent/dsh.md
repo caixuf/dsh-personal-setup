@@ -125,17 +125,78 @@ Intelligence Co., Ltd."`，与 `app-update.yml` 的 `publisherName` 一致）。
 改 `syncOnStartup: false` 后，网关加载耗时从 **10.6s → 2.2s**，模型秒出。
 定时同步（`intervalMinutes: 1440`）与手动同步不受影响。
 
-> 另一层慢源（未处理）：`dsh-our-free-model` 启动时串行 `await` 拉 listing / sealed
-> roster / kilo roster / feed，并对模型做**并发度 2** 的可用性探测（每模型 15s 超时）。
-> 它聚合了 15 个 provider、700+ 模型（cline 492、trae 38、workbuddy 30…）。
-> 且其远端源（kilo.ai、jsdelivr、ipify）**直连会 12s 超时、经本机代理 1.5s**
-> —— 若要把 `modelCatalog` 首次调用从 18.4s 再压下去，应给它配代理或减少聚合渠道。
+> 另一层慢源（**已定位，未处理**）：`dsh-our-free-model` 启动时串行 `await` 拉
+> listing / sealed roster / kilo roster / feed，并对模型做**并发度 2** 的可用性探测
+> （`src/core/runtime.js` 的 `probeCatalog(probeable, …, 2)`，每模型 15s 超时）。
+> 它聚合了 **15 个 provider、700+ 模型**（cline 492、trae 38、workbuddy 30…）。
+>
+> 🔴 **量化证据（2026-10-18 实测）**：`session/modelCatalog` 首次调用 **18,449 ms**，
+> 第二次（缓存命中）26 ms。远端源直连全部 12s 超时、**经本机代理（127.0.0.1:7897）
+> 只要 0.4–1.5s**：
+>
+> | 源 | 直连 | 经代理 |
+> |---|---|---|
+> | `api.kilo.ai/api/gateway/models` | 12,021ms 超时 | **1,494ms** |
+> | `cdn.jsdelivr.net` | 12,023ms 超时 | **1,733ms** |
+> | `api.ipify.org` | 701ms 失败 | **2,568ms** |
+>
+> 两个可落地的方向（按性价比）：
+> 1. **给 DSH 进程配代理**：`HTTPS_PROXY=http://127.0.0.1:7897` +
+>    `NODE_USE_ENV_PROXY=1`（Node 24 的 undici 默认**不读** env 代理，必须带第二个变量；
+>    实测同一个 fetch 脚本从 2,663ms → 1,113ms）。
+> 2. **减少聚合渠道**：`~/.dsh/our-free-model/settings.json` 里关掉不用的
+>    provider / 把 `exposeRegionModels` 设 false，直接砍 probeable 集合。
+>
+> 注意 `probeIntervalMinutes` 默认 15 分钟，所以这个 18s 是**周期性**的，不只开机一次。
 
 ### 移动端连带修复（详见 `intent/remote-选型.md` 与 `dsh-native-mobile` 仓）
 
 - `dsh-mobile-gateway` 需**两处**补丁才兼容 0.2.1（`ctx.connection.browserPeer`、
   `apiFetch.fetch(upstream, peer)`），已提交 `dsh-native-mobile@97d2683`。
 - 手机 App 配对的是局域网地址，靠 `templates/dsh/lan-bridge/` 的 TCP 桥接上回环。
+
+## 🔴 2026-10-18：一次「以为修好了、其实只修了一层」的完整教训
+
+用户报「总是有弹窗」。第一次排障定位到**计划任务每 2 分钟弹一个 WT 窗口**，
+修了任务动作（`wscript + run-hidden.vbs`），实测 5 分钟无可见窗口 —— **宣布修好了**。
+
+**但用户截了张图**：屏幕上还挂着一个 frpc 的控制台窗口，日志从 `20:01:06` 开始，
+`login to server success` / `[dsh-mobile-tcp] start proxy success`。
+那是**上一轮我自己重启 frpc 时留下的**，一直没消失。
+
+### 漏在哪
+
+第一轮只看了「任务本身闪一下」，没看**任务拉起的常驻子进程**。
+守护脚本里的 `start "" /min "%EXE%"` —— `/min` 只是把子进程的控制台**最小化**，
+窗口真实存在。frpc 一跑几小时，窗口就一直在任务栏。
+
+更糟的是**验证方法错了**：我当时用「任务 `LastTaskResult = 0` + 定时捕获窗口创建事件」
+作为判据。前者只能说明脚本跑完没报错，后者只抓**新创建**的窗口 ——
+一个已经存在的常驻窗口永远不会被「新建」捕获到。
+
+### 正确的判据
+
+```powershell
+(Get-Process <常驻进程名>).MainWindowHandle      # 0 才叫无窗口
+Get-CimInstance Win32_Process -Filter "Name='conhost.exe'" |
+  Where-Object ParentProcessId -eq (Get-Process <名>).Id   # 空才叫无控制台
+```
+
+再辅以 `EnumWindows` 按 pid 枚举全部顶层窗口（比 `MainWindowHandle` 更严格）。
+
+### 最终修法（两层都要）
+
+| 层 | 错误做法 | 正确做法 |
+|---|---|---|
+| 任务宿主 | 动作直连 `.cmd`（`Hidden=true` 在 win11 无效） | `wscript.exe run-hidden.vbs <cmd>` |
+| 子进程 | `start "" /min exe`（只最小化） | `node start-hidden.mjs --log <f> <exe>` |
+
+`start-hidden.mjs` 用 `spawn(..., { windowsHide: true })` = `CREATE_NO_WINDOW`。
+`--log` 是必须的：该启动器默认 `stdio: 'ignore'`，子进程 stdout 会被丢弃 ——
+而 LAN bridge 正是靠 stdout 打印 `LISTEN=<ip>:<port>` 让守护知道自己该校验哪个地址。
+
+> 📌 **可复用教训**：报告「修好了」之前，先问一句「用户看到的那一帧，是哪一层画的」。
+> 对常驻进程，判据必须是**进程自身的窗口/控制台属性**，不是任务退出码。
 
 ## 🔴 先读：有一批文档**只改了文档，没改机器**（2026-10-12 审计定性）
 

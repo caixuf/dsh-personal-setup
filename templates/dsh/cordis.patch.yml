@@ -162,7 +162,19 @@
       # 覆盖的开关：0 关闭定时；插件每日首个同步会自动打本地快照
       intervalMinutes: 1440
       syncSkills: true
-      syncSettings: true
+      # 🔴 2026-10-18 改 false：这条路是空转的，而且会给人「设置已备份」的错觉。
+      #
+      # dsh-sync 的 settings 组固定读 `<DSH_HOME>/settings.yaml`
+      # （node_modules/@weibaohui/dsh-sync/src/index.js:708 `from: roots.settingsFile`，
+      #  :677 `settingsFile: join(dh, 'settings.yaml')`）。但 0.2.1 起设置已经迁进
+      #  profile 的 cordis.patch.yml，settings.yaml 根本不存在 —— copyTree 读失败
+      #  走 `catch { return }` 静默跳过，所以 syncSettings=true 从未备份过任何东西
+      #  （实测：settings.yaml / settings.yml / settings.json 全都不存在）。
+      #
+      # 真正的设置源由下面的 plugins 组覆盖（其 includeFiles 含 cordis.patch.yml，
+      # 见同文件 :716）。附带好处：settings 组是把明文密钥推上仓库的那条路，
+      # 关掉后只剩 plugins 组，暴露面更小。
+      syncSettings: false
       syncPlugins: true
       skillsStrategy: union
       settingsStrategy: backup

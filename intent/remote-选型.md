@@ -131,7 +131,50 @@ Android App (Kotlin/Compose) ──HTTPS/WSS──▶ Caddy (公网白名单) �
 1. **宿主插件 `dsh-mobile-gateway`**：
    - 挂载在机器级 `cordis.patch.yml`（作为宿主插件，防止 profile 重建丢失）。
    - 单一 WebSocket Mux 模式：`/mobile-gateway/remote.mux` 承载 `$events` 流与 RPC 转发。
-   - 安全模型：管理面 `/mobile-gateway/manage` 严格校验 `req.socket.remoteAddress` 仅限回环，特权方法（设置、文件系统全盘、插件管理）硬拦截。
+   - 安全模型：管理面 `/mobile-gateway/manage` 校验 `req.socket.remoteAddress` 仅限回环，
+     特权方法（设置、文件系统全盘、插件管理）硬拦截。
+     🔴 **但这条校验在 LAN 桥上会失效** —— 见下节「回环校验的漏洞」。公网侧不受影响
+     （Caddy 白名单把 `/mobile-gateway/manage` 挡成 404）。
+
+### 🔴 回环校验的漏洞（2026-10-18 实测并修复）
+
+**现象**：从局域网机器访问，管理面连鉴权都没有就返回 200：
+
+```
+http://192.168.31.79:19387/mobile-gateway/manage            → 200, 12435 B
+http://192.168.31.79:19387/mobile-gateway/manage/api/state  → 200, 17558 B
+  body 含 99 个设备的 id/name/platform/lastSeenAt、credentials{username,passwordSet}、lanAddresses
+对照组（宿主自身围栏是好的）：LAN /api → 403
+```
+
+**根因**：`manage.mjs` 的守卫是
+`isLoopbackAddress(req.socket.remoteAddress)`（`lib/manage.mjs:349`），
+而 `lan-bridge/dsh-lan-bridge.mjs` 是**本机 TCP 转发**（`net.connect(19387,'127.0.0.1')`）——
+局域网来电经过它之后，`remoteAddress` **恒为 127.0.0.1**，守卫恒真。
+**是桥把调用者身份抹掉了。**
+
+**为什么不能靠改 Host 头校验**：Host 是调用方可控的。实测
+`curl -H "Host: 127.0.0.1:19387" http://192.168.31.79:19387/...` 会被接受。
+
+**修法（落在桥上，因为只有桥还知道请求来自外部）**：
+`dsh-lan-bridge.mjs` 在转发前嗅探请求行，命中 `/mobile-gateway/manage` 前缀
+（含 `/manage/...`、大小写变体、绝对 URL 形式）直接回 403
+`{"error":{"code":"lan_bridge_blocked"}}`，不建上游连接。
+
+**验证**：
+
+| 请求 | 修复前 | 修复后 |
+|---|---|---|
+| LAN `/mobile-gateway/manage` | 200 | **403** |
+| LAN `/manage/api/state` | 200 | **403** |
+| 本机回环 manage（桌面面板） | 200 | 200 |
+| LAN 手机 App `/api/*` | 401 | 401（仍转发） |
+| 公网 VPS `/manage` | 404 | 404 |
+
+> 📌 **可复用教训**：任何「只允许本机」的校验，在**代理/转发/隧道**后面都会失真。
+> 加一层转发就等于把所有调用者伪装成本机 —— 围栏必须建在**能看见真实来源的那一跳**。
+> 这条同样适用于 `netsh portproxy`。
+
 2. **原生 Android App**：
    - Kotlin 2.0 + Jetpack Compose + Material 3。
    - 对齐 DSH Web 客户端与 MiniMax 移动端设计语言，支持按电脑工作区（`cwd`）分组展示会话。
