@@ -1,27 +1,54 @@
 # templates/dsh/ — 使用说明
 
-> **最后复核：2026-10-14**（对照本机实机逐项核过；见下面的「当前实机状态」）
+> **最后复核：2026-10-18**（DSH 升到 0.2.1-rc.2 后逐项重核；见下面的「当前实机状态」）
 
 ## 本目录内容
 
 | 文件 | 装到哪 | 作用 |
 |---|---|---|
 | `package.json` | `<dsh-home>/profiles/<name>/` | 依赖清单 + bundle 名单 |
-| `cordis.patch.yml` | `<dsh-home>/profiles/<name>/` | **profile 级**补丁（大部分插件配置，12 条目） |
+| `cordis.patch.yml` | `<dsh-home>/profiles/<name>/` | **profile 级**补丁（大部分插件配置） |
 | `pnpm-workspace.yaml` | `<dsh-home>/profiles/<name>/` | pnpm 配置（`nodeLinker` / `minimumReleaseAge` / `allowBuilds`） |
 | `cordis.machine-patch.yml` | **`<dsh-home>/`（上一级！）** | **机器级**补丁：三行宿主插件 |
 | `frpc.toml` / `frps.toml` | 家里客户端 / VPS | FRP 隧道（脱敏模板，含占位符） |
+| `frpc-guard.cmd` | 家里，与 `frpc.exe` 同目录 | **frpc 掉线自愈**（frpc 不是服务，会静默退出） |
 | `caddy/dsh-mobile.caddy` | VPS | 公网入口白名单（**含封死管理面**） |
+| `lan-bridge/` | 家里（见该目录 README） | **局域网桥**：让配对到 `<lan-ip>:19387` 的手机 App 连上只监听回环的 DSH |
 
-## 当前实机状态（2026-10-14 实测，模板即按此对齐）
+## 当前实机状态（2026-10-18 实测，模板即按此对齐）
 
 | 项 | 值 |
 |---|---|
+| DSH 内核 | **0.2.1-rc.2** |
 | bundle 数 | **18**（`dsh-whale-girl-pet` 已被用户关掉、不在 bundles 里，但**模板保留它**作为默认基线） |
 | 依赖条数 | **18**（含 2 个自研宿主插件：`dsh-mobile-gateway` / `dsh-rea`） |
 | 机器级 patch | **3 行**：`dsh-bot-gateway` / `dsh-mobile-gateway` / `dsh-rea` |
 | 机器级 `node_modules` | 同上 3 个包各一份副本 |
 | `ui-theme` | `dark`，`fontSize: 17` |
+| `webserver.host` | **`127.0.0.1`**（0.2.1 禁止 `0.0.0.0`，详见下面「0.2.1 适配」） |
+| `remote-web-ui` | **`disabled: true`**（与 0.2.1 冲突，见下） |
+| `dsh-sync.syncOnStartup` | **`false`**（启动同步 15.7s 会堵住模型插件） |
+
+## 🔴 0.2.1 适配（2026-10-17/18 实机踩出来的四条）
+
+1. **`webserver` 禁止 `0.0.0.0`**（`dsh-host-webserver` 的 Config 里硬拒绝通配地址）。
+   它是 **required 插件**，起不来会导致 10 个依赖 `webServer` 的插件挂起 → 启动失败
+   → 桌面端进 recovery → `sanitizeProfile` **把 bundles 砍到 2 个、patch 改名备份**
+   （表现：插件全部消失）。所以 profile patch 里必须写 `host: '127.0.0.1'`。
+   手机要连局域网/公网走**外部转发**（`lan-bridge/` + `frpc`），不改这里。
+2. **`remote-web-ui` 整行禁用**：`lanBind: true` 会写 `0.0.0.0`（触发上面第 1 条），
+   `lanBind: false` 又每次启动强制写回 `127.0.0.1` 覆盖手工配置。0.4.7 仍未修。
+3. **插件准入规则变了**：manifest 声明 `engines.dsh` 时**该范围一票否决**、
+   忽略 peerDependencies（0.2.0 是相反逻辑），不合格的 bundle 整个进 `skippedBundles`
+   （插件静悄悄消失）。豁免写在 profile 下的 `compatibility.json`：
+   `{"<pkg>@<ver>": ["0.2.1-rc.2"]}`（值必须是**精确版本数组**）。本机需豁免 3 个：
+   `@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2`（模型 provider！）、
+   `@anionex/dsh-eye-care@0.1.2`、`dsh-browser-cdp@1.2.1`。
+4. **`dsh-wsl-workspace` 的 `{{cwd}}` 会让 WSL 会话每轮报错**
+   （`unknown prompt variable "{{cwd}}"` in section `deployment:persona-prefix`；
+   0.2.1 的该段只注册 `provider`、`model`）。v0.7.5/v0.7.7 都有这个串。
+   修法：把 `lib/index.js` 里 `PERSONA_APPEND` 的 `{{cwd}}` 删掉（本机已打补丁）。
+
 
 ## 两种插件形态，别混
 

@@ -27,7 +27,8 @@ DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经�
 
 | 项 | 值 | 说明 |
 |---|---|---|
-| DSH 版本 | **`0.2.0-rc.2`** | 插件 peer 窗口极窄，**不要**装到此版本之外 |
+| DSH 版本 | **`0.2.1-rc.2`**（2026-10-18 升） | 见下面「0.2.1 升级与适配」；旧值 0.2.0-rc.2 |
+| 更新源 | 只有 nightly 一条线 | `download.deepseek.com/dsh-desk/feeds/win-x64/`，无 stable/beta；`electron-updater` 的 `autoDownload=false`、`allowDowngrade=false`，回滚要手动跑旧安装包 |
 | 内置 Node | **v24.21.0** | 来自 `runtime/primary-runtime/dependencies/node` |
 | profile 名 | **`desktop`** | 路径 `~/.dsh/profiles/desktop/` |
 | 形态 | **Desktop 便携版** | 官方依赖在 `app.asar` 内，**不存在** `~/.dsh/profiles/node_modules` |
@@ -81,6 +82,60 @@ DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经�
 | `dsh-context-milvus` | `^0.2.0-rc.1`（**精确匹配**） | Milvus 语义代码搜索 | 面向代码而非文档 |
 
 ⚠️ 两者都**没有** `dsh-kb-rag` 的「混合检索 + 交叉编码器重排 + 页码级引用」，属降级替代。
+
+## 🔴 0.2.1 升级与适配（2026-10-17/18 实机全过程）
+
+**为什么升**：官方 2026-10-17 发布 DeepSeek-V4.1-Flash-1017，模型针对 DSH 做了专项优化，
+需要 **DSH ≥ 0.2.1-rc.1** 才能完整吃到。本机从 `0.2.0-rc.2` 升到 `0.2.1-rc.2`。
+
+**安装包**：`download.deepseek.com/dsh-desk/feeds/win-x64/nightly.yml` →
+`deepseek-harness-0.2.1-rc.2-win-x64.exe`（276 MB）。
+校验过 SHA512（与 feed 一致）与 Authenticode 签名（`CN="Hangzhou DeepSeek Artificial
+Intelligence Co., Ltd."`，与 `app-update.yml` 的 `publisherName` 一致）。
+
+### 升级过程踩的三个坑
+
+1. **安装器退出码 2**：`/S` 静默安装时若 DSH 又被拉起，安装器检测到就中止。
+   必须**先确保进程全退**再装（脚本里 `taskkill /F` 后轮询 `tasklist` 确认），
+   装完再 `start ""` 拉起。
+2. **启动即崩 → recovery 清空配置**：见下面第 1 条适配项，`sanitizeProfile` 会把
+   `dsh.profile.bundles` 从 18 砍到 2、把 `cordis.patch.yml` 改名成
+   `cordis.patch.yml.bak-<ms>` 再写一个 836 字节的最小版。
+   **修复靠这两份残留**：bundles 从 `profile-backup`/`.bak` 恢复、patch 从
+   `cordis.patch.yml.bak-1792248889962` 恢复。
+3. **`dsh plugin install` 会把「不在依赖树」的包移到 `node_modules/.ignored/`**：
+   自研的 `dsh-mobile-gateway`、`dsh-rea` 不在 profile `package.json` 依赖里，
+   一次 `install` 就被挪走。**但机器级 patch 仍按名字引用它们** ——
+   好在它们另有一份装在 `<dsh-home>/node_modules/`（机器级），运行时从那里解析。
+
+### 四条适配项（都已在本机落地，模板同步）
+
+| # | 问题 | 修法 |
+|---|---|---|
+| 1 | `webserver` 硬拒绝 `0.0.0.0`（通配=RCE 面）。它是 **required** 插件，起不来会拖垮 10 个依赖 `webServer` 的插件 → 启动失败 → recovery 清配置 | profile patch 写 `host: '127.0.0.1'`；手机走外部转发（`templates/dsh/lan-bridge/` + `frpc`） |
+| 2 | `remote-web-ui` 与 0.2.1 冲突（`lanBind: true` 写 `0.0.0.0`；`false` 又强制写回 `127.0.0.1` 覆盖手工配置）。0.4.7 仍未修 | 整行 `disabled: true` |
+| 3 | 插件准入规则变：声明 `engines.dsh` 时**一票否决**、忽略 peerDeps，不合格的静默进 `skippedBundles` | profile 下 `compatibility.json`：`{"<pkg>@<ver>": ["0.2.1-rc.2"]}`（值必须精确版本**数组**）。本机豁免 3 个：`@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2`（**模型 provider，最高优先级**）、`@anionex/dsh-eye-care@0.1.2`、`dsh-browser-cdp@1.2.1` |
+| 4 | `dsh-wsl-workspace` 的 `PERSONA_APPEND` 含 `{{cwd}}`，而 0.2.1 的 `deployment:persona-prefix` 只注册 `provider`/`model` → **每个 wsl-standard 会话每一轮都失败**：`unknown prompt variable "{{cwd}}"` | 改 `lib/index.js` 把 `{{cwd}}` 删掉（v0.7.5/v0.7.7 都有此串，npm 无修复版） |
+
+### 升级后的性能问题（已修）
+
+「模型模块要等十几秒」**不是模型的问题**：`dsh-sync` 启动同步实测 **15,742 ms**
+（`state.json` 的 `lastResult.durationMs`），而它在 bundles 排第 8、模型 provider
+`dsh-our-free-model` 排第 10 —— 被堵在后面。
+改 `syncOnStartup: false` 后，网关加载耗时从 **10.6s → 2.2s**，模型秒出。
+定时同步（`intervalMinutes: 1440`）与手动同步不受影响。
+
+> 另一层慢源（未处理）：`dsh-our-free-model` 启动时串行 `await` 拉 listing / sealed
+> roster / kilo roster / feed，并对模型做**并发度 2** 的可用性探测（每模型 15s 超时）。
+> 它聚合了 15 个 provider、700+ 模型（cline 492、trae 38、workbuddy 30…）。
+> 且其远端源（kilo.ai、jsdelivr、ipify）**直连会 12s 超时、经本机代理 1.5s**
+> —— 若要把 `modelCatalog` 首次调用从 18.4s 再压下去，应给它配代理或减少聚合渠道。
+
+### 移动端连带修复（详见 `intent/remote-选型.md` 与 `dsh-native-mobile` 仓）
+
+- `dsh-mobile-gateway` 需**两处**补丁才兼容 0.2.1（`ctx.connection.browserPeer`、
+  `apiFetch.fetch(upstream, peer)`），已提交 `dsh-native-mobile@97d2683`。
+- 手机 App 配对的是局域网地址，靠 `templates/dsh/lan-bridge/` 的 TCP 桥接上回环。
 
 ## 🔴 先读：有一批文档**只改了文档，没改机器**（2026-10-12 审计定性）
 

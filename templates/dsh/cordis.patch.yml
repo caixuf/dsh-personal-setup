@@ -115,22 +115,33 @@
     hidden: true
 - id: remote-web-ui
   name: "@linxin666/dsh-remote-web-ui"
+  # 🔴 DSH 0.2.1 起本插件（含 0.4.7）与宿主**冲突**，故整行禁用：
+  #   · lanBind: true  → 它把 webserver 写成 host: 0.0.0.0，而 0.2.1 **硬拒绝通配地址**
+  #     （webserver 是 required 插件，起不来 → 10 个依赖 webServer 的插件全部挂起
+  #      → 启动失败 → 桌面端进入 recovery，sanitizeProfile 把 bundles 砍到 2 个、
+  #      并把本文件改名备份。这就是 2026-10-17 那次「插件全消失」的真因）。
+  #   · lanBind: false → 它又每次启动把块强制写回 127.0.0.1，覆盖手工维护的绑定。
+  # 手机配对页/隧道功能暂时不用；需要时改回 false 前先确认它不再写 0.0.0.0。
+  disabled: true
   config:
-    lanBind: true
+    lanBind: false
 
-# --- remote-web-ui lan-bind block (managed - do not edit) ---
-# ⚠️ 这段由插件自己维护（在设置 → 插件 → 远程访问里开「局域网访问」时写入）。
-# 作用是让 DSH 监听 0.0.0.0:19387，手机才连得上；⚠️ 会**同时把服务暴露给整个局域网**，
-# 不要在不受信任的网络里开。手机侧访问仍需走插件自己的配对流程。
+# 手工维护的绑定块（原 remote-web-ui 的 lan-bind 块，0.2.1 后已接管）。
+# 🔴 必须保持 loopback，两个原因：
+#   ① 0.2.1 的 webserver 硬拒绝 0.0.0.0（通配 = 全网卡监听 = 局域网 RCE 面）；
+#   ② dsh-desktop-host 在两处硬编码 127.0.0.1（spawn 时的 --host 参数、给 Electron 的
+#      authenticatedUrl），改成局域网 IP 会让本机自己 ECONNREFUSED。
+# 手机走局域网/公网靠**外部转发**，不改这里：
+#   · 局域网：dsh-lan-bridge.mjs 监听 <lan-ip>:19387 → 127.0.0.1:19387（见 templates/dsh/lan-bridge/）
+#   · 公网：frpc 拨出 → VPS Caddy:2444 → FRPS:2443 → 家里 127.0.0.1:19387
 - id: webserver
   name: '@deepseek-ai/dsh-host-webserver'
   config:
-    host: '0.0.0.0'
+    host: '127.0.0.1'
     port: 19387
     compression: gzip
     compressionLevel: 1
     compressionThresholdBytes: 1024
-# --- end remote-web-ui lan-bind block ---
 
 - id: dsh-sync
   name: "@weibaohui/dsh-sync"
@@ -141,7 +152,11 @@
       # token 由各机本地填入或走 askpass / credential 服务，切勿直接入库提交明文
       gitEnabled: true
       autoSync: true
-      syncOnStartup: true
+      # 🔴 2026-10-17 改 false：启动同步实测耗时 **15.7 秒**（state.json 的 durationMs），
+      # 而 dsh-sync 在 bundles 里排第 8、模型 provider 插件（dsh-our-free-model）排第 10，
+      # 启动同步把后面的插件全部堵住 → 「模型模块要等十几秒才出现」。
+      # 关掉后网关加载从 10.6s 降到 2.2s。定时同步（intervalMinutes）与手动同步不受影响。
+      syncOnStartup: false
       # 一天一次（1440 分钟）。用户 2026-10-14 定：30 分钟太勤，
       # 而同步内容（skills/settings/插件清单）本来就不分钟级变化。
       # 覆盖的开关：0 关闭定时；插件每日首个同步会自动打本地快照
