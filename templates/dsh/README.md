@@ -81,7 +81,7 @@ $lnk.Save()
 | `dsh-sync.syncOnStartup` | **`false`**（启动同步 15.7s 会堵住模型插件） |
 | `dsh-sync.syncSettings` | **`false`**（0.2.1 起这条路空转，见下「第五/六条」） |
 | `bot-gateway` | **`disabled: true`**（写在机器级 patch，profile 层写无效，见下） |
-| `compatibility.json` | **3 条豁免**（0.2.1 起准入一票否决，见下） |
+| `compatibility.json` | **1 条豁免**（0.2.1 起准入一票否决；另两个包新版本已自行支持 0.2.1，见下） |
 
 ## 🔴 2026-10-18 追加：两个「静默失效」的配置项
 
@@ -118,9 +118,14 @@ $lnk.Save()
 3. **插件准入规则变了**：manifest 声明 `engines.dsh` 时**该范围一票否决**、
    忽略 peerDependencies（0.2.0 是相反逻辑），不合格的 bundle 整个进 `skippedBundles`
    （插件静悄悄消失）。豁免写在 profile 下的 `compatibility.json`：
-   `{"<pkg>@<ver>": ["0.2.1-rc.2"]}`（值必须是**精确版本数组**）。本机需豁免 3 个：
-   `@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2`（模型 provider！）、
-   `@anionex/dsh-eye-care@0.1.2`、`dsh-browser-cdp@1.2.1`。
+   `{"<pkg>@<ver>": ["0.2.1-rc.2"]}`（值必须是**精确版本数组**，版本一变即失效）。
+   实测（2026-10-20）真正需要豁免的只有 **1 个**：
+   `@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2`（模型 provider！其 peer 精确锁死 `0.2.0-rc.2`）。
+
+   > ⚠️ 早前这里还列了 `@anionex/dsh-eye-care@0.1.2` 与 `dsh-browser-cdp@1.2.1`，
+   > 那是**过时值**：`^0.1.2` 实际装到 `0.1.3`、`^1.2.1` 实际装到 `1.2.3`，
+   > 而豁免按**精确版本**匹配，写旧版本等于没写。且这两个新版本的
+   > `engines.dsh` / `peerDependencies` 已包含 `0.2.1-rc.2`，本来就不需要豁免。
 4. **`dsh-wsl-workspace` 的 `{{cwd}}` 会让 WSL 会话每轮报错**
    （`unknown prompt variable "{{cwd}}"` in section `deployment:persona-prefix`；
    0.2.1 的该段只注册 `provider`、`model`）。v0.7.5/v0.7.7 都有这个串。

@@ -116,7 +116,12 @@ scan_related_repos() {
 }
 
 DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
+# ⚠️ 用 mktemp 取**路径**后立刻删掉文件：本文件唯一用途是「是否命中」的跨子 shell 标记，
+# 必须**初始不存在**。2026-10-20 修 bug：原写法 `MARKER="$(mktemp)"` 建出的空文件
+# 使下面的 `[ -f "$MARKER" ]` 恒为真 → 只要有任一关联仓存在，脚本就**永远**报
+# 「发现疑似明文密钥」，即使实际 0 命中（误报，且会让人无视真警报）。
 MARKER="$(mktemp)"
+rm -f "$MARKER"
 trap 'rm -f "$MARKER"' EXIT
 echo "=== 扫描关联仓库（git 已跟踪的文件）==="
 for spec in \
