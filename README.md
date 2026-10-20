@@ -46,6 +46,7 @@ scripts/
   apply.sh              幂等落地（默认 --check；--dsh 落 DSH 配置）（WSL 侧）
   install-dsh.ps1       🔴 **一键装全部 bundle + 自研宿主插件**（PowerShell）
   proxy-fix.ps1         ★ 修「代理变量大小写重复」导致 `Start-Process` 崩溃（PowerShell）
+  win-proxy-bypass.ps1  ★ 修「浏览器访问内网 502」：WinINET 绕过表缺内网网段（PowerShell）
   provision-vps.sh      VPS 侧一键装 frps + Caddy（bash，在 VPS 上跑）
   check-secrets.sh      提交前密钥扫描（⚠️ 手动跑，无 CI 强制）
 ```
@@ -182,7 +183,8 @@ bash scripts/apply.sh --dsh
 | WSL 用户 | `caixuf` | 出现在 dotfile 路径、`.npmrc` 的 prefix |
 | 宿主名 | `caixuf2` | 出现在 `intent/wsl.md` 的机器标注；`.gitconfig` 里只有 `[credential] helper = store`，**不含宿主名** |
 | 代理端口 | **`7897`** ＝ 真实代理（singcore，只绑 `127.0.0.1`）；`7898`/`7899`/`7892` ＝ netsh portproxy 转发到 7897 的垫片 | ⚠️ **不是并列的多个代理**。`7899` 是 `intent/wsl.md` 指定的**推荐同名转发**口，别漏。改候选端口见 `intent/wsl.md`（模板用 `CANDIDATE_PORTS`） |
-| WSL 网络模式 | 旧机 `mirrored`；**本机必须 NAT + 宿主 portproxy** | 🔴 本机 **开 mirrored 总是失败**，**不要**加 `networkingMode=mirrored`（那些 portproxy 垫片就是为此存在的正式设计）。判据只有一条：代理**实测能出网** |
+| WSL 网络模式 | 旧机 `mirrored`；**本机现为 `mirrored`**（2026-09-14 设，2026-10-20 复核） | ⚠️ 本文档早期写的「本机必须 NAT」已过时（证据见 `intent/wsl.md` 的「现状修正」）。portproxy 垫片**继续保留**（兼容层）。判据只有一条：代理**实测能出网** |
+| 代理绕过表 | **三套各读各的**：WinINET `ProxyOverride`（Chrome/Edge 读它）＝ `*.immotors.com;*.immotors.sgp1.com;172.100.*;localhost;127.*;10.*;172.16.*…172.31.*;192.168.*;192.168.0.0/16;<local>`；WinHTTP 与环境变量 `no_proxy` 另两套 | 🔴 WinINET 那套会被代理软件**改残**（只剩公司域名）→ 浏览器打不开内网而命令行正常。修：`scripts/win-proxy-bypass.ps1 -Apply`（改完**重启浏览器**）。见 `intent/wsl.md` |
 | free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@^2.1.0`，新机优先用 npm 版**，无需 tgz（本机 2026-10-12 已切） |
 | **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | 🔴 **2026-10-14 实测：该目录与本机 WSL 源仓都已不存在，fork 已回滚**。新机**默认不要装** fork（用官方 `^0.7.5`）；确有需要再按下面「WSL fork」重建 |
 | 主机地址 | VPS 公网 IP + frp token | 见 `templates/dsh/frpc.toml` 的三处占位符与 `intent/新机器复刻清单.md` 第 3 步 |

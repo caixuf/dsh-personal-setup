@@ -171,6 +171,21 @@ systemctl status imfl-autotest
 
 **⚠️ 该单元 `WorkingDirectory` 和 `EnvironmentFile` 都是绝对路径**，新机用户名不同需改。
 
+### 浏览器怎么访问（2026-10-20 实测，踩过坑）
+
+| 入口 | 可用性 | 说明 |
+|---|---|---|
+| `http://192.168.137.10:9900/` | ✅ | 网线段上那台设备；**浏览器必须绕过系统代理**才能打开 |
+| `http://127.0.0.1:8080/` | ✅ | Windows 侧 `netsh portproxy`：`0.0.0.0:8080 → 192.168.137.10:9900` |
+| `http://127.0.0.1:9900/` | ✅ | WSL mirrored 直接暴露（4ms） |
+| `http://192.168.137.2:9900/` | ❌ 超时 | 本机「以太网」适配器自己的 IP，Windows 侧连它会挂 |
+
+🔴 **「浏览器打不开、命令行 curl 正常」时先看绕过表**，别去查网络：
+见 `intent/wsl.md` 的「浏览器访问内网 IP 报 502」一节。
+浏览器读 WinINET 的 `ProxyOverride`，它被代理软件改残后会把内网地址
+也交给代理 → 502；命令行读环境变量 `no_proxy` → 直连正常。
+修法：`.\scripts\win-proxy-bypass.ps1 -Apply`（改完**重启浏览器**）。
+
 ## 4. privoxy（8118）
 
 遗留 HTTP 代理，监听 `127.0.0.1:8118` 与 `[::1]:8118`。
@@ -196,6 +211,46 @@ Error: Client network socket disconnected before secure TLS connection was estab
 **这不是 DSH 插件造成的**。根因是编辑器 remote server 注入的幽灵代理
 （见 `intent/wsl.md` 的「幽灵代理陷阱」）。修复：确保 `~/.proxy.sh` 与
 `wsl-proxy-autofix` 正常，然后重连 IDE。
+
+### agy CLI（Antigravity CLI）—— 型号与容量
+
+| 项 | 值 |
+|---|---|
+| 二进制 | `~/.local/bin/agy`（WSL 侧，1.4.3；Windows 侧另有 winget 装的 `agy.exe`） |
+| 配置 | `~/.gemini/antigravity-cli/settings.json`（**`model` 字段存的是 label，不是 id**） |
+| 日志 | `~/.gemini/antigravity-cli/log/cli-<日期>_<时刻>.log` |
+| 认证 | keyring（`~/.gemini/antigravity-cli/antigravity-oauth-token`） |
+
+**🔴 「agy 连不上」多半不是代理问题**（2026-10-20 实测）。本机代理三层都在且有效
+（Windows 用户级 `http_proxy`、WSL mirrored interop 继承、`.bashrc` 的
+`wsl-proxy-autofix v7`），且 `agy models` / `loadCodeAssist` /
+`fetchAvailableModels` 全部秒通。真凶是 **Google CloudCode 服务端容量耗尽**：
+
+```
+UNAVAILABLE (code 503): No capacity available for model gemini-3.8-flash-high on the server
+```
+
+且 `gemini-3.8-flash` 的 SSE 流
+（`daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent`）
+还会反复 `EOF` 卡死。
+
+**实测可用 / 不可用（2026-10-20）**：
+
+| 型号 | 状态 |
+|---|---|
+| `claude-sonnet-4-6` | ✅ |
+| `claude-opus-4-6-thinking` | ✅ |
+| `gpt-oss-120b-medium` | ❌ 503 无容量 |
+| `gemini-3.8-flash-high` / `gemini-3.8-flash-low` | ❌ 503 无容量 |
+| `gemini-3.8-flash-medium` | ⚠️ 流起来了但卡住不出字 |
+
+**排查入口**：先看 `~/.gemini/antigravity-cli/log/cli-*.log` 里的
+`run.go:39 "attempt N failed"` 行 —— **503 = 服务端容量**（换型号或等），
+**EOF = 长连接被掐**（再查代理/网络）。不要一上来就改代理配置。
+
+**本机默认型号**已改为 `Claude Sonnet 4.6 (Thinking)`
+（原 `Gemini 3.8 Flash (Medium)`），备份 `settings.json.bak.20261020_1700`。
+改法就是改那个 `model` 字段的 label。
 
 ## 6. Hy Memory 2.0 —— 本地记忆服务（19527 + 19528）
 
