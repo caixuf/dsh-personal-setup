@@ -85,7 +85,13 @@
           - id: deepseek-v4.1-flash
             name: deepseek-v4.1-flash
             contextWindow: 1000000
-            maxTokens: 1000000
+            # ⚠️ 2026-10-21 实测：该网关的 max_tokens 上界是 **393216**。
+            # 写 1000000 时每次请求都 400：
+            #   Invalid max_tokens value, the valid range of max_tokens is [1, 393216]
+            # （DSH 会把这个 maxTokens 作为请求默认值下发）
+            # 网关 /v1/models 的 metadata.output_budget 只有 128000，但实测 393216 仍被接受。
+            # 已实测 393216 + stream + tools 正常返回。
+            maxTokens: 393216
             input:
               - text
               - image
