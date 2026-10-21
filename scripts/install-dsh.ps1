@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     按仓库模板把 DSH profile 的 bundle 全部装上。
 
@@ -211,10 +211,25 @@ if ($localInstall.Count -gt 0) {
     $runtimeCandidates = @(
         (Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness\resources\runtime')
     )
+    # 🔴 2026-10-21 实测修正：pnpm **不在** runtime\pnpm\ 下，而在
+    #    runtime\primary-runtime\dependencies\pnpm\bin\pnpm.cjs。
+    #    旧路径写错时，`(Test-Path $n) -and (Test-Path $p)` 恒为假 →
+    #    $node/$pnpm 双双留 null → 脚本只打印一句「找不到 node/pnpm」，
+    #    **运行时依赖（ws / qrcode）根本没装**，自研宿主插件下次启动就缺模块。
+    #    ⇒ node 与 pnpm **分开**找，别让其中一个缺失把另一个也带走。
     foreach ($rt in $runtimeCandidates) {
-        $n = Join-Path $rt 'primary-runtime\dependencies\node\bin\node.exe'
-        $p = Join-Path $rt 'pnpm\bin\pnpm.cjs'
-        if ((Test-Path $n) -and (Test-Path $p)) { $node = $n; $pnpm = $p; break }
+        if (-not $node) {
+            foreach ($c in @('primary-runtime\dependencies\node\bin\node.exe', 'node\bin\node.exe')) {
+                $n = Join-Path $rt $c
+                if (Test-Path $n) { $node = $n; break }
+            }
+        }
+        if (-not $pnpm) {
+            foreach ($c in @('primary-runtime\dependencies\pnpm\bin\pnpm.cjs', 'pnpm\bin\pnpm.cjs')) {
+                $p = Join-Path $rt $c
+                if (Test-Path $p) { $pnpm = $p; break }
+            }
+        }
     }
     if (-not $node) {
         $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
