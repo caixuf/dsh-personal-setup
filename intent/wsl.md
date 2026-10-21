@@ -471,6 +471,45 @@ curl.exe -s -o NUL -w '%{http_code} %{time_total}s' --noproxy '' -x http://127.0
 不属于本机任何适配器）。IMFL 平台自己的后端就配在 `.10` 上，
 详见 `intent/services.md` 第 3 节。
 
+### 🔴 DSH 账号页「账号资料暂不可用」：platform.deepseek.com 不能走代理（2026-10-21 实测）
+
+**现象**：DSH 设置 → 账号页显示「已登录 DeepSeek」+「**账号资料暂不可用**」，
+但同一页的**余额能正常显示**（¥4.86）。
+
+**根因**：两个接口同域名、同 token、同客户端，**只有账号资料那条路径有 WAF 规则**：
+
+| 接口 | 经星连代理 | 直连 |
+|---|---|---|
+| `/auth-api/v0/users/current`（账号资料） | **403 / WAF challenge**（响应头 `x-amzn-waf-action: challenge`） | **200**，正常返回账号数据 |
+| `/api/v0/users/get_user_summary`（余额） | 200 正常 | 200 正常 |
+
+⇒ 只要账号资料请求走了代理就必然失败，余额不受影响。
+**「余额能读出来」不能用来证明网络没问题** —— 这是本条最容易误判的地方。
+
+实测复现（`curl`）：
+
+| 出口 | 结果 |
+|---|---|
+| 经代理 | 403 / challenge |
+| 直连 | 200 |
+
+**修法**：把 `platform.deepseek.com` 加进**绕过代理**名单，三处都要：
+
+| 位置 | 作用 | 本机怎么改 |
+|---|---|---|
+| Windows 用户级环境变量 `NO_PROXY` | DSH 进程继承它；Node 的 env 代理（`NODE_USE_ENV_PROXY`）按它放行 | `HKCU\Environment\NO_PROXY` 末尾加 `,platform.deepseek.com` |
+| WinINET `ProxyOverride` | Electron/Chromium 渲染进程侧 | 同上；⚠️ 会被星连守卫改写，见前节 |
+| `~/.proxy.sh` 的 `PROXY_BYPASS`（= `templates/proxy.sh`） | WSL 侧 | 模板已同步 |
+
+⚠️ **改完要重启 DSH**：`http_proxy`/`no_proxy` 是**进程启动时**继承的，
+运行中的 DSH 拿不到新值（Chromium 直接读注册表的那侧是热生效的）。
+
+⚠️ **`api.deepseek.com` 不需要绕**：实测它经代理 `/user/balance` 返回 200
+（余额与界面一致）。只绕 `platform.deepseek.com` 就够，别多改。
+
+**判据**：`curl` 打 `/auth-api/v0/users/current`，
+**直连 200、经代理 403** ⇒ 少了这条绕过。
+
 ### 🔴 git 侧代理：本次「git 代理怪毛病」的结论（**不是配置错，是瞬时的**）
 
 > **2026-10-14 排查结论：不要再给 git 加全局 `http.proxy`。**

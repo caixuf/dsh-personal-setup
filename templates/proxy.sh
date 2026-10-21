@@ -43,7 +43,12 @@ _proxy_hosts() {
 PROXY_PORT=""          # 由探测结果填充，初始为空
 
 PROBE_URL="https://www.gstatic.com/generate_204"
-PROXY_BYPASS="localhost,127.0.0.1,::1,.local,.immotors.com,.immotors.sgp1.com,10.0.0.0/8,172.16.0.0/12,172.100.0.0/16,192.168.0.0/16"
+# platform.deepseek.com 必须直连（2026-10-21 实测）：它的账号资料接口
+# /auth-api/v0/users/current 经代理会被 CloudFront/WAF 拦（403 或 challenge），
+# 而余额接口 /api/v0/users/get_user_summary 没有这条规则 —— 于是 DSH 账号页
+# 出现「已登录 DeepSeek / 账号资料暂不可用 / 余额能显示」的怪相。
+# 判据：同域名下 profile 失败而 balance 成功 = 走了代理，要加进绕过表。
+PROXY_BYPASS="localhost,127.0.0.1,::1,.local,.immotors.com,.immotors.sgp1.com,10.0.0.0/8,172.16.0.0/12,172.100.0.0/16,192.168.0.0/16,platform.deepseek.com"
 INTRA_GIT_HOST="gitlab-ap-office.immotors.com"
 
 # 快速 TCP 可达性预检：先花 <2s 排除死端口，避免逐个白等 HTTP 超时。
