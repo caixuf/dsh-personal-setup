@@ -40,7 +40,7 @@ DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经�
 | `@deepseek-ai/dsh-base` | 官方核心 | 必需 |
 | `@deepseek-ai/dsh-web-app` | Web 界面层 | 必需 |
 | `dsh-our-free-model` | 免费模型接入 | ✅ 用 **npm 版**（`dsh-our-free-model@^2.1.0`）；本机已于 2026-10-12 从旧机 `file:` tgz 切到 npm |
-| `dsh-wsl-tool` | WSL 命令/路径/环境工具 + **侧栏 WSL 面板** | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor`/`wsl-bootstrap`/`wsl-term`。🔴 **版本必须跟上**：2026-10-14 从 `1.11.0` 升到 **`1.12.5`**（1.11.0 只在 DSH 0.1.7-rc.2 验证过，本机宿主是 0.2.0-rc.2），修的是**面板两处真实 bug**。见下「WSL 面板」节 |
+| `dsh-wsl-tool` | WSL 命令/路径/环境工具 + **侧栏 WSL 面板** | 注册 `wsl`/`wsl-path`/`wsl-env`/`wsl-doctor`/`wsl-bootstrap`/`wsl-term`。🔴 **版本必须跟上**：2026-10-14 从 `1.11.0` 升到 `1.12.5`（1.11.0 只在 DSH 0.1.7-rc.2 验证过，本机宿主是 0.2.0-rc.2），修的是**面板两处真实 bug**；**2026-10-22 再升到 `1.12.8`**（见「插件版本升级」节）。见下「WSL 面板」节 |
 | `dsh-wsl-workspace` | 会话执行环境落地 WSL | ⚠️ **2026-10-14 实测已回滚成官方 0.7.5**（不再是本地 fork）。见「WSL 用户级 skill fork」 |
 | `dsh-wsl-workspace-picker` | 目录选择器直达 `/mnt/*` | 注册进 `conversation.hero.workspace.directoryFlow` 与 `sidebar.workspaces.directoryFlow` 两个槽位（priority −10 覆盖内置） |
 | `dsh-whale-girl-pet` | 鲸鱼娘桌宠 | ⚠️ 见下方「桌宠脆弱性」。**独立插件，不依赖皮肤中心**。🔴 **2026-10-13 13:27 起因用户关闭已从 `dsh.profile.bundles` 移除**（依赖仍在 `dependencies`、`node_modules` 里包完好 70/70）—— 想恢复桌面宠物就把这一项加回 bundles 再重启 |
@@ -82,6 +82,50 @@ DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经�
 | `dsh-context-milvus` | `^0.2.0-rc.1`（**精确匹配**） | Milvus 语义代码搜索 | 面向代码而非文档 |
 
 ⚠️ 两者都**没有** `dsh-kb-rag` 的「混合检索 + 交叉编码器重排 + 页码级引用」，属降级替代。
+
+## 🔴 插件版本升级（2026-10-22 实测，本轮只升 UI/工具类）
+
+**做法**：改 profile 的 `package.json` 把 spec 下界抬到新版 → 跑一次
+`dsh plugin --profile desktop install`（= pnpm install，**只动改过 spec 的那几个**，
+lockfile 里没动过的包**保持原版本**）→ 核对 `node_modules` 里的实装版本。
+
+**本轮实装结果（9 个真升 + 2 个只是把 spec 下界对齐到实装）**：
+
+| 包 | 旧 | 新 |
+|---|---|---|
+| `dsh-browser-cdp` | 1.2.3 | **1.6.0** |
+| `dsh-mnemon` | 0.5.25 | **0.5.34** |
+| `dsh-theme-studio` | 0.6.3 | **0.10.0** |
+| `dsh-terminal-panel` | 1.0.1 | **1.3.0** |
+| `dsh-wallpaper-bg` | 0.5.12 | **0.5.16** |
+| `dsh-whale-girl-pet` | 0.3.9 | **0.3.10** |
+| `dsh-wsl-tool` | 1.12.5 | **1.12.8** |
+| `dsh-wsl-workspace` | 0.7.7 | **0.7.9** |
+| `@linxin666/dsh-client-ui-skill-explorer` | 0.4.6 | **0.4.8** |
+| `@linxin666/dsh-remote-web-ui` | 0.4.8 | 0.4.8（spec `^0.4.7`→`^0.4.8`） |
+| `@anionex/dsh-eye-care` | 0.1.3 | 0.1.3（spec `^0.1.2`→`^0.1.3`） |
+
+**升前必查 `engines.dsh`**（准入一票否决，不兼容会**静悄悄**进 skippedBundles）：
+本轮 11 个候选版本的 `engines.dsh` 全部覆盖 `0.2.1-rc.2` 才动手；
+`dsh-wsl-workspace` 新旧版都要求 `node>=24`，本机 DSH 自带 node 是 **v24.21.0** ✓。
+
+**🔴 本轮刻意没升：`@deepseek-ai/dsh-llm-pi-ai`**（模型供应商）。
+npm 上有 `0.2.1-rc.2`（`^0.2.0-rc.2` 语义上满足），但它有 `compatibility.json`
+**精确版本豁免**（`{"@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2": ["0.2.1-rc.2"]}`）：
+一旦解析到新版本，**key 对不上 → 豁免失效 → bundle 被静悄悄跳过 → 全部模型不可用**，
+而且**本会话内无法验证**（要重启 DSH 才加载新插件）。
+按「升级前必须先确认新路径覆盖旧路径的全部副作用」这条硬规则，
+这档留给你决定：要升的话，**必须同步把豁免表的 key 改成
+`@deepseek-ai/dsh-llm-pi-ai@0.2.1-rc.2`**，并在重启后确认模型列表还在。
+
+**⚠️ `pnpm peers check` 的一堆 missing/conflicting peer 是结构性噪声，不是升级引入的**：
+报的全是**宿主运行时提供**的包（`@deepseek-ai/dsh-tools`/`dsh-settings`/`cordis`/`react`…），
+profile 本来就不装它们；DSH 的插件准入**本来就忽略 peerDependencies**。
+判断依据：`dsh-browser-cdp 1.2.3` 当年也要求 `@deepseek-ai/dsh-tools` → 同类问题升级前就在。
+
+**升完必须重启 DSH**：Node ESM 不热重载，磁盘是新的、内存里还是旧的。
+本轮已实测 `dsh-browser-cdp` 升到 1.6.0 后，bcdp 浏览器工具照常工作
+（打开 `http://192.168.137.10:9900/` 正常渲染）。
 
 ## 🔴 0.2.1 升级与适配（2026-10-17/18 实机全过程）
 
@@ -781,7 +825,7 @@ bash scripts/patches/dsh-bot-gateway-focus-guard.sh
 > 2. fork 的四个标志符号在实装 `lib/` 里**各 0 命中**：
 >    `discoverUserSkillRoots` / `USER_DSH_RANK` / `USER_AGENTS_RANK` / `resolveDistributionHome` ——
 >    对照 `forks/dsh-wsl-workspace/src/host/wsl-skills.ts` 里它们是存在的，说明装的是官方版；
-> 3. `package.json` 里是 `"dsh-wsl-workspace": "^0.7.5"`（**不是** `link:`），
+> 3. `package.json` 里是 `"dsh-wsl-workspace": "^0.7.9"`（**不是** `link:`），
 >    `pnpm-lock.yaml` 有 `dsh-wsl-workspace@0.7.5` 正常条目；
 > 4. fork 的运行副本目录 `C:\Users\20247\Downloads\minimax_work\dsh-wsl-workspace-fork` **不存在**，
 >    WSL 源仓 `~/code/dsh-wsl-workspace` **也不存在**。
@@ -869,7 +913,7 @@ Unknown agent preset: wsl-standard (gateway/internal)
 
 ```
 node_modules\dsh-wsl-workspace  → 真实目录（非 junction），官方 0.7.5
-package.json: "dsh-wsl-workspace": "^0.7.5"
+package.json: "dsh-wsl-workspace": "^0.7.9"
 版本 0.7.5   variantGeneration = 0   discoverUserSkillRoots = 0 处 ← 官方版没有它
 ```
 
@@ -923,7 +967,7 @@ npm run build                   # 再重新编译（勿手工解冲突）
 ### 回滚方式（第一次回滚已验证有效）
 
 ```bash
-# 1. package.json 里把 "link:..." 改回 "^0.7.5"
+# 1. package.json 里把 "link:..." 改回 "^0.7.9"
 # 2. 删 junction（只删链接，别动目标目录里的真实文件）
 # 3. plugin_manager install dsh-wsl-workspace
 # 4. 重启 DSH
@@ -1470,9 +1514,9 @@ allowBuilds:
 | 项 | 值 |
 |---|---|
 | 修复前 | `dsh-wsl-tool@1.11.0`（2026-10-06 发布） |
-| 本机宿主 | DSH **`0.2.0-rc.2`** |
+| 本机宿主 | DSH **`0.2.1-rc.2`**（2026-10-18 起） |
 | 1.11.0 的 `engines.dsh` | `>=0.1.7-rc.2` —— 而它的 README 写明**只在 0.1.7-rc.2 上验证过** |
-| 修复后 | **`1.12.5`**（2026-10-12） |
+| 修复后 | **`1.12.5`**（2026-10-12）→ **2026-10-22 升到 `1.12.8`** |
 
 上游在 **1.12.0** 的提交 `afa01ca` 明确写了「**two real panel bugs**」，
 两条都出在**面板的写入路径**上：
@@ -1498,7 +1542,7 @@ Copy-Item "$d\package.json","$d\pnpm-lock.yaml" "$env:USERPROFILE\.dsh\bak-$(Get
 
 # 2) 升级（用 dsh CLI，不要手改 package.json）
 & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" `
-  plugin --profile desktop add dsh-wsl-tool@1.12.5
+  plugin --profile desktop add dsh-wsl-tool@1.12.8
 ```
 
 ⚠️ **这一步会「报失败但其实成功」** —— 若 `allowBuilds` 还是占位串，
@@ -1506,7 +1550,7 @@ pnpm 以 exit 1 收场（见下文「pnpm 坑 4」）。**只信磁盘**：
 
 ```powershell
 (Get-Content "$d\node_modules\dsh-wsl-tool\package.json" -Raw -Encoding UTF8|ConvertFrom-Json).version
-# 必须打印 1.12.5
+# 必须打印 1.12.8
 ```
 
 ### 🔴 验证时必须重启 DSH，且用**运行时**版本号确认
