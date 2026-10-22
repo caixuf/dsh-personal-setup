@@ -10,7 +10,8 @@
   config:
     # ⚠️ 这一条是**运行时会话选择**，会话切换模型时会把它写回，不是配置漂移。
     # 模板只放一个「换台新机也一定存在」的基线（buddy 由 dsh-our-free-model 提供）。
-    # 本机当前值：provider: minimax-cn / MiniMax-M3.1-Flash-Preview（2026-10-14 会话内切换）。
+    # 本机当前值：provider: deepseek-account / deepseek-flash（2026-10-22）。
+    # 注：minimax 正式模型名是 MiniMax-M3.1-Flash（不是 -Preview），见下面 provider 段。
     provider: buddy
     model: deepseek-v4.1-flash
     reasoningEffort: high
@@ -39,33 +40,51 @@
     providers:
       minimax-cn:
         apiKeyEnv: MINIMAX_CN_API_KEY
+        # 🔴 2026-10-22 按官方 /v1/models 清单 + 实测重写：
+        # 正式名是 MiniMax-M3.1-Flash（**没有 -Preview**；旧名已不在官方清单里）。
+        # 实测上限：M3.1-Flash / M3 → max_tokens 524288、上下文 ≈1M；
+        #           M2.7 / M2.5 系 → max_tokens 196608、上下文更小；
+        #           M2.1 / M2 在清单里但实调 404，不配。
+        # ⚠️ maxTokens 会被 DSH 当请求默认值下发，写超上游上限必 400。
         models:
-          - id: MiniMax-M3.1-Flash-Preview
-            name: MiniMax-M3.1-Flash-Preview
+          - id: MiniMax-M3.1-Flash
+            name: MiniMax-M3.1-Flash
             contextWindow: 1048576
-            maxTokens: 512000
+            maxTokens: 524288
+            input:
+              - text
+              - image
+          - id: MiniMax-M3
+            name: MiniMax-M3
+            contextWindow: 1048576
+            maxTokens: 524288
             input:
               - text
               - image
           - id: MiniMax-M2.7
             name: MiniMax-M2.7
-            contextWindow: 204800
-            maxTokens: 131072
+            contextWindow: 196608
+            maxTokens: 196608
             input:
               - text
           - id: MiniMax-M2.7-highspeed
             name: MiniMax-M2.7-highspeed
-            contextWindow: 204800
-            maxTokens: 131072
+            contextWindow: 196608
+            maxTokens: 196608
             input:
               - text
-          - id: MiniMax-M3
-            name: MiniMax-M3
-            contextWindow: 1048576
-            maxTokens: 512000
+          - id: MiniMax-M2.5
+            name: MiniMax-M2.5
+            contextWindow: 196608
+            maxTokens: 196608
             input:
               - text
-              - image
+          - id: MiniMax-M2.5-highspeed
+            name: MiniMax-M2.5-highspeed
+            contextWindow: 196608
+            maxTokens: 196608
+            input:
+              - text
       ccp:
         apiKeyEnv: CCP_API_KEY
         api: openai-completions
