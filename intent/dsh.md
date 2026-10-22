@@ -243,6 +243,71 @@ Get-CimInstance Win32_Process -Filter "Name='conhost.exe'" |
 > 📌 **可复用教训**：报告「修好了」之前，先问一句「用户看到的那一帧，是哪一层画的」。
 > 对常驻进程，判据必须是**进程自身的窗口/控制台属性**，不是任务退出码。
 
+## 🔴 「DeepSeek Messages transport failed」= 死代理，不是模型/认证/配置问题（2026-10-22 实测）
+
+**现象**：DSH 里发消息，红字一直重试到最后一次：
+
+```
+正在重试模型请求（5/5） 失败原因：DeepSeek Messages transport failed
+```
+
+同时侧边模型列表大面积不可用（our-free-model 探测全部 `ECONNREFUSED`）。
+
+**先排除这三件事（都不是原因，别在这里浪费时间）**
+
+| 怀疑对象 | 怎么排除 |
+|---|---|
+| 模型配置写错 | 配置能加载、模型能选中，说明 provider/model 解析没问题 |
+| API Key / 认证 | `curl https://api.deepseek.com` 返回 **401**（= 通了但没带 key）即为正常 |
+| 账号被封 / 限流 | 那是 **429**，DSH 会报限流，不会报 transport |
+
+**真因：系统代理指向一个**没人监听**的端口**
+
+`transport failed` 是**传输层**建连失败。最常见的一幕：
+
+```
+代理软件（Clash/星连）退出
+  → 但 HKCU\...\Internet Settings\ProxyServer 还指着 127.0.0.1:7899
+  → DSH（Electron）把所有请求发往那个死端口
+  → 全失败
+```
+
+**一条命令判据**（Windows 侧）：
+
+```bash
+# 读到的端口，和实际监听对不上 → 就是这个病
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyServer
+netstat -ano | findstr "7899"     # 没有任何 LISTENING = 死端口
+```
+
+**🔴 为什么"代理已经恢复了、DSH 还是不通"**
+
+DSH 是 Electron：**代理配置在进程启动时读入 session 并缓存**。
+代理软件晚于 DSH 启动时，DSH 不会自己重新读一遍 → 对着死端口一直重试。
+
+⇒ **必须重启 DSH**，光等代理恢复不够。这不是 bug，是进程生命周期的正常行为。
+（同类：`NO_PROXY` 也是启动时继承的，改完同样要重启。）
+
+**完整的时间线可以这样对**（2026-10-22 真实案例）
+| 时间 | 事件 |
+|---|---|
+| 18:17:59 | DSH 启动 —— 此时代理已退出，系统代理是死端口 |
+| 18:18:16 | netfix 探测全不通，`auto=switched direct` 关掉系统代理 |
+| 18:23 | 界面上 `transport failed` 重试 5/5（DSH 仍持着启动时的死代理） |
+| 18:24:54 | 手动重开 Clash Verge |
+| 18:28:28 | netfix `auto=switched port=7899 可用` |
+| 18:33 | our-free-model 重探：`ECONNREFUSED` 归零 → 底层已恢复 |
+| — | **但 DSH 仍需重启才正常** |
+
+**⚠️ 连带发现：DeepSeek 本该直连，却被死代理连累**
+
+`api.deepseek.com` 命中 Clash 的 `GEOIP,CN,DIRECT`，平时**不走代理**。
+但系统代理是**全局单点** —— 一旦它指向死端口，连本该 DIRECT 的国内流量都在第一跳就失败。
+⇒ 「国内服务怎么也不通了」不要先怀疑 DNS 或运营商，先看系统代理有没有指向活端口。
+
+详见 `intent/wsl.md` 的「谁在改写 Windows 侧绕过表：netfix」一节
+（那里还写了 5 分钟残留窗口，以及手工配置为什么会被回滚）。
+
 ## 🔴 先读：有一批文档**只改了文档，没改机器**（2026-10-12 审计定性）
 
 **结论：`intent/` 里多条「已装 / 已卸载」是失真的** —— 那些 commit **只动了仓库文件，

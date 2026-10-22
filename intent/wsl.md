@@ -535,7 +535,7 @@ curl.exe -s -o NUL -w '%{http_code} %{time_total}s' --noproxy '' -x http://127.0
 | 位置 | 作用 | 本机怎么改 |
 |---|---|---|
 | Windows 用户级环境变量 `NO_PROXY` | DSH 进程继承它；Node 的 env 代理（`NODE_USE_ENV_PROXY`）按它放行 | `HKCU\Environment\NO_PROXY` 末尾加 `,platform.deepseek.com` |
-| WinINET `ProxyOverride` | Electron/Chromium 渲染进程侧 | 同上；⚠️ 会被星连守卫改写，见前节 |
+| WinINET `ProxyOverride` | Electron/Chromium 渲染进程侧 | 同上；⚠️ **会被 netfix 按内置常量重写**（星连已退场），见下一节 |
 | `~/.proxy.sh` 的 `PROXY_BYPASS`（= `templates/proxy.sh`） | WSL 侧 | 模板已同步 |
 
 ⚠️ **改完要重启 DSH**：`http_proxy`/`no_proxy` 是**进程启动时**继承的，
@@ -546,6 +546,58 @@ curl.exe -s -o NUL -w '%{http_code} %{time_total}s' --noproxy '' -x http://127.0
 
 **判据**：`curl` 打 `/auth-api/v0/users/current`，
 **直连 200、经代理 403** ⇒ 少了这条绕过。
+
+> **2026-10-22 复核补充（两点，都很重要）**
+>
+> **① 实测值变了**：这天打同一个接口，**经代理和直连都是 `429 Too Many Requests`**
+> （`Server: CW`），没有复现 403/challenge。说明**限流挡在了 WAF 前面**，
+> WAF 那层还没走到。⇒ 看到 429 不要据此判定"绕过没加对"，换个时间或换个出口再验。
+>
+> **② 真正的覆盖源换人了**：星连退场后，改写 `NO_PROXY` / `ProxyOverride` 的是
+> **netfix**（见下一节），不是"星连守卫"。手工往注册表加域名，**5 分钟内就会被重写冲掉**。
+
+### 🔴 谁在改写 Windows 侧绕过表：netfix（2026-10-22 补，本节此前在仓库里是空白）
+
+> 这是一个**没入仓的守护进程**，却持有 `NO_PROXY` / `ProxyOverride` 的写入权 ——
+> 任何"手工加个域名就行"的改法都会被它静默回滚。先认识它，再改配置。
+
+**它是什么**
+- 位置 `D:\minimax\netfix\`，主逻辑 `netswitch.ps1`
+- 由启动文件夹的 `netfix-watch.vbs` 常驻，**每 300 秒**拉起一次
+  `netswitch.ps1 -Mode auto`（约 1.5s 退出，不常驻内存）
+- 候选端口 `7897 → 7899 → 7898 → 7892` 逐个「真发一次 HTTP 请求」验活
+
+**它每次都干这些事**（所以手工配置会被覆盖）
+
+| 动作 | 写入位置 |
+|---|---|
+| 有可用端口 → 开系统代理 | `HKCU\...\Internet Settings\ProxyServer` / `ProxyEnable` |
+| 同步环境变量 | `HKCU\Environment` 的 `HTTP_PROXY` / `HTTPS_PROXY` / **`NO_PROXY`** |
+| 覆盖绕过表 | `HKCU\...\Internet Settings\ProxyOverride`（常量 `$BypassList`） |
+| 全不通 → 降级 | `ProxyEnable=0`、`NO_PROXY='*'`、回落直连 |
+
+**⇒ 要加绕过域名，必须改它源码，改注册表没用**
+
+```powershell
+# netswitch.ps1 两处常量，改完 5 分钟内自动生效
+第 60 行  $BypassList = '...;platform.deepseek.com'      # WinINET，分号分隔
+第315 行  Set-EnvValue 'NO_PROXY' '...,platform.deepseek.com'   # env，逗号分隔
+```
+
+2026-10-22 已按此加过 `platform.deepseek.com`（备份 `netswitch.ps1.bak-dsbypass-20261022-183639`）。
+PowerShell 改完用解析器校验：`[Parser]::ParseFile(path,[ref]$null,[ref]$errs)`。
+
+**🔴 5 分钟窗口的连带风险（比覆盖本身更坑）**
+
+代理软件退出后，系统代理最多**残留 5 分钟**才被 netfix 清掉。这段窗口里：
+
+- 所有**已经启动**的 Electron / IDE / 浏览器都会把请求发往死端口 → 全部失败
+- 而且它们**不会自己恢复** —— netfix 改的是注册表，只对**新启动**的进程生效
+- 典型表现：WSL 里 `github` 靠直连碰巧能通、`google` 全挂；DSH 报
+  `DeepSeek Messages transport failed` 重试 5 次
+
+⇒ **判据：代理软件重启后，凡是出过错的 GUI 程序，一律重启一遍，别等它自愈。**
+
 
 ### 🔴 git 侧代理：本次「git 代理怪毛病」的结论（**不是配置错，是瞬时的**）
 
