@@ -4,13 +4,22 @@
 # 2026-10-22：⭐ 又切回 **Clash Verge**（星连已弃用/退场），真身端口随之变回 7899
 #
 # 端口约定（各占各的，不许互相改）：
-#   7899  ★真正的代理：**Clash Verge 的 verge-mihomo**（监听 127.0.0.1:7899）
-#   7897  历史遗留：星连 SingLink 的 singcore 专用口，**星连已退场 → 现在是死口**
-#   7892  历史遗留名的垫片（netsh portproxy → 127.0.0.1:7897）→ 目标已死
+#   7899  ★真正的代理：**Clash Verge 的 verge-mihomo**（**只绑 127.0.0.1**）
+#   7898  netsh portproxy 主入口 0.0.0.0:7898 → 127.0.0.1:<当前代理端口>
+#         **NAT 模式下 WSL 唯一稳的路** —— 内核只绑回环，WSL 够不着它
+#   7892  netsh portproxy 兼容层 → 同一个当前代理端口
+#         （修历史遗留写死 7892 的配置；它和 7898 是同一目标，不是死口）
+#   7897  历史遗留：星连 singcore 专用口，**星连已退场 → 死口**
 #
-# ⚠️ **2026-10-22 起真身是 7899**，候选顺序必须是「7899 打头」：
-#   7897/7892 都通不到星连（已退场），排在前面只会白等超时。
-#   本机实机顺序：`CANDIDATE_PORTS="7899 7897 7892"`。
+# ⚠️ 候选顺序必须 **7898 打头**（2026-10-22 实测修正）：
+#   portproxy 的目标每次跑 `启用WSL代理-SingLink.cmd` 都会重新对齐到当前代理，
+#   所以 7898 / 7892 **换代理软件也不用改，而且命中最快**；
+#   7899 是内核原始口，只有 mirrored 或 Clash 开了「局域网连接」时 WSL 才直连得上；
+#   7897 基本是死口，留作回退。
+#   本机实机顺序：`CANDIDATE_PORTS="7898 7892 7899 7897"`。
+#
+#   ❌ 别退回到 `"7899 7897 7892"`：本机 NAT 拓扑下 7899 连不上（只绑回环）、
+#      7897 星连已退场，两个都要白等一轮超时，第三个才通。
 #
 # ⚠️ **换代理软件时，四处都要同步**（只有 WinINET 会跟着代理软件自动变）：
 #   ① 用户环境变量 HTTP_PROXY/HTTPS_PROXY/NO_PROXY  ← **CLI 工具(node/npm/python/git)唯一读这层**
@@ -43,7 +52,7 @@
 # 注意：这里看不到 Windows 的监听列表，必须用真实 TCP 建连 + 真实 HTTP 请求判断。
 
 PROXY_HOST="127.0.0.1"          # 由探测结果覆盖（NAT 下会变成网关 IP）
-CANDIDATE_PORTS="7899 7897 7892"
+CANDIDATE_PORTS="7898 7892 7899 7897"
 
 # 候选宿主地址：先 127.0.0.1（mirrored），再默认网关（NAT）。每次现算，避免网络变化后过期。
 _proxy_hosts() {
@@ -51,7 +60,12 @@ _proxy_hosts() {
 }
 PROXY_PORT=""          # 由探测结果填充，初始为空
 
-PROBE_URL="https://www.gstatic.com/generate_204"
+# 探测靶（2026-10-22 实测补充）：**别拿 gstatic 当唯一判据**。
+# gstatic 是 Google 的端点，本身会偶发挂死（20 次挂 1 次，一挂就挂满超时）。
+# 它挂的时候，四个候选端口会**同时**被判死（都走同一条出网路径）→ 开终端判定
+# 「没网」→ 根本不设代理 → 整个终端裸连。表现就是「代理明明开着却连不上」。
+# cloudflare 的 204 端点实测 30/30 稳定，放主靶；gstatic 只做备靶。
+PROBE_URLS="http://cp.cloudflare.com/generate_204 https://www.gstatic.com/generate_204"
 # platform.deepseek.com 必须直连（2026-10-21 实测）：它的账号资料接口
 # /auth-api/v0/users/current 经代理会被 CloudFront/WAF 拦（403 或 challenge），
 # 而余额接口 /api/v0/users/get_user_summary 没有这条规则 —— 于是 DSH 账号页
@@ -69,12 +83,15 @@ _wsl_tcp_ok() {
 # 真请求探活：$1=宿主地址 $2=端口
 _host_port_ok() {
     _wsl_tcp_ok "$1" "$2" || return 1
-    local code
-    code=$(env -u http_proxy -u https_proxy -u all_proxy \
-                -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
-           curl -s -o /dev/null -w '%{http_code}' --max-time 6 \
-                -x "http://$1:$2" "$PROBE_URL" 2>/dev/null)
-    case "$code" in 200|204|301|302) return 0 ;; *) return 1 ;; esac
+    local u code
+    for u in $PROBE_URLS; do
+        code=$(env -u http_proxy -u https_proxy -u all_proxy \
+                    -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+               curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+                    -x "http://$1:$2" "$u" 2>/dev/null)
+        case "$code" in 200|204|301|302) return 0 ;; esac
+    done
+    return 1
 }
 
 # 端口探活：依次试候选宿主地址，命中即把 PROXY_HOST 定到该地址。$1=端口
