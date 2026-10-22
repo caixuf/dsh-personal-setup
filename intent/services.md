@@ -306,7 +306,7 @@ cd ~/hy-memory-spike && source env.sh
 ## 服务启动顺序（重要）
 
 ```
-Windows 代理软件启动（星连/Clash，端口 7897）
+Windows 代理软件启动（Clash Verge 7899；2026-10-22 前是星连 7897）
    ↓
 WSL 启动 → fix-wsl-net.service 修正路由
    ↓

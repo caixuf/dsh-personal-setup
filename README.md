@@ -182,16 +182,16 @@ bash scripts/apply.sh --dsh
 | Windows 用户名 | `20247` | 出现在 `.wslconfig`、若干文档路径与脚本默认值中。**模板 `templates/dsh/package.json` 已不含任何 `link:`**（2026-10-14 复核），故此项不影响 `install-dsh.ps1` |
 | WSL 用户 | `caixuf` | 出现在 dotfile 路径、`.npmrc` 的 prefix |
 | 宿主名 | `caixuf2` | 出现在 `intent/wsl.md` 的机器标注；`.gitconfig` 里只有 `[credential] helper = store`，**不含宿主名** |
-| 代理端口 | **`7897`** ＝ 真实代理（singcore，只绑 `127.0.0.1`）；`7898`/`7899`/`7892` ＝ netsh portproxy 转发到 7897 的垫片 | ⚠️ **不是并列的多个代理**。`7899` 是 `intent/wsl.md` 指定的**推荐同名转发**口，别漏。改候选端口见 `intent/wsl.md`（模板用 `CANDIDATE_PORTS`） |
+| 代理端口 | 🔴 **2026-10-22：真身换回 `7899` ＝ Clash Verge 的 `verge-mihomo`**（星连已退场，`7897`/`7892` 成了死口）。⚠️ 换代理软件时**四处都要同步**（只有 WinINET 会自动跟着变）：用户 env `HTTP_PROXY`/`NO_PROXY`、WinHTTP、WinINET、WSL `~/.proxy.sh`。本机用 `C:\Users\20247\code\workbuddy\sync-proxy.ps1` 一次同步前三处。候选端口见 `intent/wsl.md`（模板用 `CANDIDATE_PORTS`，本机为 `"7899 7897 7892"`） |
 | WSL 网络模式 | 旧机 `mirrored`；**本机现为 `mirrored`**（2026-09-14 设，2026-10-20 复核） | ⚠️ 本文档早期写的「本机必须 NAT」已过时（证据见 `intent/wsl.md` 的「现状修正」）。portproxy 垫片**继续保留**（兼容层）。判据只有一条：代理**实测能出网** |
 | 代理绕过表 | **三套各读各的**：WinINET `ProxyOverride`（Chrome/Edge 读它）＝ `*.immotors.com;*.immotors.sgp1.com;172.100.*;localhost;127.*;10.*;172.16.*…172.31.*;192.168.*;192.168.0.0/16;<local>`；WinHTTP 与环境变量 `no_proxy` 另两套 | 🔴 WinINET 那套会被代理软件**改残**（只剩公司域名）→ 浏览器打不开内网而命令行正常。修：`scripts/win-proxy-bypass.ps1 -Apply`（改完**重启浏览器**）。见 `intent/wsl.md` |
 | free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@^2.1.0`，新机优先用 npm 版**，无需 tgz（本机 2026-10-12 已切） |
-| **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | 🔴 **2026-10-14 实测：该目录与本机 WSL 源仓都已不存在，fork 已回滚**。新机**默认不要装** fork（用官方 `^0.7.5`）；确有需要再按下面「WSL fork」重建 |
+| **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | 🔴 **2026-10-14 实测：该目录与本机 WSL 源仓都已不存在，fork 已回滚**。新机**默认不要装** fork（用官方 `^0.7.9`）；确有需要再按下面「WSL fork」重建 |
 | 主机地址 | VPS 公网 IP + frp token | 见 `templates/dsh/frpc.toml` 的三处占位符与 `intent/新机器复刻清单.md` 第 3 步 |
 
 ### WSL fork：**选装**，不在模板默认清单里
 
-> ⚠️ **模板 `templates/dsh/package.json` 里是官方 `dsh-wsl-workspace: ^0.7.5`。**
+> ⚠️ **模板 `templates/dsh/package.json` 里是官方 `dsh-wsl-workspace: ^0.7.9`。**
 > 这是**刻意的** —— 之前模板里写的是本机 `link:` 绝对路径，
 > 别的机器没有该目录，`install` 会直接报
 > `cannot resolve profile bundle "dsh-wsl-workspace"` **导致整套安装失败**。
@@ -203,7 +203,7 @@ bash scripts/apply.sh --dsh
 > 🔴 **2026-10-14 实测：fork 已不在本机运行。**
 > 实装的 `node_modules/dsh-wsl-workspace` 是**真实目录、官方 0.7.5**，
 > fork 的标志符号（`discoverUserSkillRoots` / `USER_DSH_RANK` / `resolveDistributionHome`）
-> 在实装 `lib/` 里**各 0 命中**；`package.json` 里是 `^0.7.5` 而非 `link:`；
+> 在实装 `lib/` 里**各 0 命中**；`package.json` 里是 `^0.7.9` 而非 `link:`；
 > 两个运行/开发目录都不存在。
 > **后果**：WSL 用户级 skill 不再被加载 —— 当前 WSL 侧带 `SKILL.md` 的 skill
 > 只有 `~/.claude/skills` 7 个、`~/.agents/skills` 9 个（旧文档写的 61/62 已失效）。
@@ -238,7 +238,7 @@ bash scripts/apply.sh --dsh
 
 | 项 | 模板 | 本机实机 | 原因 |
 |---|---|---|---|
-| `dsh-wsl-workspace` | `^0.7.5` | `link:<本机路径>` | 本机装了 fork 让 61 个 WSL skill 可见 |
+| `dsh-wsl-workspace` | `^0.7.9` | `link:<本机路径>` | 本机装了 fork 让 61 个 WSL skill 可见 |
 
 模板 = **通用基线**（任何机器直接可用）；实机 = 在基线上的**本机增强**。
 审计时不要把这个差异当「文档与实机不符」。

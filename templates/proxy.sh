@@ -1,23 +1,32 @@
 #!/bin/bash
 # 代理快捷开关 v7 —— 多候选端口自动探测
 # 2026-09-26：宿主代理从 Clash Verge 切到 星连 SingLink
+# 2026-10-22：⭐ 又切回 **Clash Verge**（星连已弃用/退场），真身端口随之变回 7899
 #
 # 端口约定（各占各的，不许互相改）：
-#   7897  ★真正的代理：星连 SingLink 的 singcore，**只绑 127.0.0.1**
-#   7898  netsh portproxy 垫片 0.0.0.0:7898 → 127.0.0.1:7897（给 NAT 模式的 WSL 用）
-#   7892  同上，历史遗留名的垫片 → 127.0.0.1:7897
-#   7899  portproxy 0.0.0.0:7899 → 127.0.0.1:7899 —— 设计给 Clash 用的垫片。
-#         ⚠️ Clash 没跑时会**自环**（目标落在自己的监听范围内）→ 连不通，
-#         所以排在候选最后，别排在能用的端口前面白等超时。
+#   7899  ★真正的代理：**Clash Verge 的 verge-mihomo**（监听 127.0.0.1:7899）
+#   7897  历史遗留：星连 SingLink 的 singcore 专用口，**星连已退场 → 现在是死口**
+#   7892  历史遗留名的垫片（netsh portproxy → 127.0.0.1:7897）→ 目标已死
+#
+# ⚠️ **2026-10-22 起真身是 7899**，候选顺序必须是「7899 打头」：
+#   7897/7892 都通不到星连（已退场），排在前面只会白等超时。
+#   本机实机顺序：`CANDIDATE_PORTS="7899 7897 7892"`。
+#
+# ⚠️ **换代理软件时，四处都要同步**（只有 WinINET 会跟着代理软件自动变）：
+#   ① 用户环境变量 HTTP_PROXY/HTTPS_PROXY/NO_PROXY  ← **CLI 工具(node/npm/python/git)唯一读这层**
+#   ② WinHTTP（netsh winhttp，服务/底层组件读）
+#   ③ WinINET 系统代理（浏览器/Electron 读，**会跟着代理软件自动变**）
+#   ④ 本文件的 PROXY_BYPASS（WSL 侧）
+#   本机已有 `C:\Users\20247\code\workbuddy\sync-proxy.ps1` 一次同步 ①②③。
+#   ⚠️ 改了环境变量要**重启**用到它的应用（Windows 机制：进程启动时继承）。
 #
 # 宿主地址**自动探测**，两种 WSL 拓扑都能用：
-#   mirrored → 127.0.0.1 直通 Windows，直接用 7897
+#   mirrored → 127.0.0.1 直通 Windows，直接用 7899
 #   NAT      → 127.0.0.1 是 WSL 自己的，必须走默认网关 IP（如 172.18.80.1），
-#              再经上面的 portproxy 垫片回到 7897
+#              再经 portproxy 垫片回到真身
 #
 # 🔴 「不是 mirrored」**不代表**代理不可用，别据此去改 .wslconfig：
-#    有些机器（含本机 caixuf 台式）**开 mirrored 总是失败**，
-#    那些 portproxy 垫片就是为此存在的正式设计，不是临时 workaround。
+#    有些机器**开 mirrored 总是失败**，那些 portproxy 垫片就是为此存在的正式设计。
 #
 # 怀疑端口归属时先看规则（Windows 侧）：netsh interface portproxy show all
 #
@@ -26,7 +35,7 @@
 #
 # 用法：
 #   proxy_on          # 自动探测并开启（宿主×端口 逐个试，取第一个真通的）
-#   proxy_on 7897     # 强制指定端口
+#   proxy_on 7899     # 强制指定端口
 #   proxy_off         # 关闭（同时清掉 git 的 http.proxy）
 #   proxy_test        # 状态自检
 #   proxy_doctor      # WSL 网络体检
@@ -34,7 +43,7 @@
 # 注意：这里看不到 Windows 的监听列表，必须用真实 TCP 建连 + 真实 HTTP 请求判断。
 
 PROXY_HOST="127.0.0.1"          # 由探测结果覆盖（NAT 下会变成网关 IP）
-CANDIDATE_PORTS="7897 7898 7899 7892"
+CANDIDATE_PORTS="7899 7897 7892"
 
 # 候选宿主地址：先 127.0.0.1（mirrored），再默认网关（NAT）。每次现算，避免网络变化后过期。
 _proxy_hosts() {
