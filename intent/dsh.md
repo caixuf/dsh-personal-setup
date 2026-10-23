@@ -1671,11 +1671,37 @@ pi-ai 内置目录（`dist/providers/data/minimax-cn.json`，API 走 `anthropic-
 
 | 模型 id | contextWindow | maxTokens | input |
 |---|---|---|---|
-| `MiniMax-M2.7` | 204800 | 131072 | text |
-| `MiniMax-M2.7-highspeed` | 204800 | 131072 | text |
-| `MiniMax-M3` | 1048576 | 512000 | text + image |
+| `MiniMax-M3.1-Flash` | 1048576 | **524288** | text + image |
+| `MiniMax-M3` | 1048576 | **524288** | text + image |
+| `MiniMax-M2.7` | 196608 | **196608** | text |
+| `MiniMax-M2.7-highspeed` | 196608 | **196608** | text |
+| `MiniMax-M2.5` | 196608 | **196608** | text |
+| `MiniMax-M2.5-highspeed` | 196608 | **196608** | text |
 
-### 🔴 `MiniMax-M3.1-Flash-Preview`：官方有，但**目录里没有**，且普通 Key 调不到
+> 以上 `maxTokens` 全部是**边界二分实测**值（+1 即 400），模板与本机已一致（`8ec64d0`）。
+> `M2.1` / `M2` 虽在官方清单里，但**实调 404**，不配。
+
+### ✅ `MiniMax-M3.1-Flash`：已 GA，普通 Key 实测可调通（2026-10-23 覆盖旧判断）
+
+> **2026-10-23 实测，推翻下面 10-12 那版「普通 Key 未必调得通」的判断**（原文保留作对照）：
+>
+> | 项 | 实测值 |
+> |---|---|
+> | 官方 `/v1/models` | **有** `MiniMax-M3.1-Flash`（created 2026-09-16）；**`-Preview` 已从清单消失** |
+> | 普通 Key 调用 | **通** —— `POST /v1/chat/completions` → **HTTP 200**，真回内容（`prompt_tokens=207`） |
+> | `max_tokens` 边界 | **524288 过 / 524289 报 400**（`does not support max tokens > …`）⇒ 精确值 524288 |
+> | `M2.7` 边界 | **196608 过 / 196609 报 400** ⇒ 精确值 196608 |
+> | pi-ai 可声明模态 | `MODALITIES` 只有 `text`/`image`（`lib/index.js:279`）⇒ 官方支持的**视频声明不了** |
+>
+> **🔴 静默陷阱（这次最值钱的一条）**：配置写旧名 `-Preview` 时**请求照样 200 成功**，
+> 但响应体 `model` 字段回的是 `MiniMax-M3.1-Flash` —— 网关**静默映射到 GA**。
+> ⇒ 「能跑」不能证明「模型名写对了」。**判据是响应体 `model` 字段，不是 HTTP 200。**
+>
+> 配置侧已于 `8ec64d0`（模板）+ 本机同步：6 个模型（M3.1-Flash / M3 / M2.7 / M2.7-hs /
+> M2.5 / M2.5-hs），`maxTokens` 一律取实测边界值。**`maxTokens` 会被 DSH 当请求默认值
+> 下发，写超上游上限必 400** —— 所以这个数只能用实测，不能按文档猜。
+
+### 📜 历史：`MiniMax-M3.1-Flash-Preview` 时期的判断（2026-10-12，已被上面推翻）
 
 **模型确实存在**（官方「模型介绍」页 `platform.minimax.cn/docs/guides/models-intro`）：
 
@@ -1688,12 +1714,12 @@ pi-ai 内置目录（`dist/providers/data/minimax-cn.json`，API 走 `anthropic-
 > 统一路由至 M3.1 Flash Preview**。原模型名称保留作为兼容入口，用户无需修改
 > 模型名称，原有套餐用量权益不受影响。
 
-**所以配置照写，但要清楚两件事**：
+**当时据此推断的两条（第 2 条已被实测推翻）**：
 
 1. **它是自定义路由** —— pi-ai 目录里没有，得在 `cordis.patch.yml` 手写
-   `id/contextWindow/maxTokens/input`（规格与 M3 同：1M 上下文、原生多模态）。
-2. **普通 `MINIMAX_CN_API_KEY` 未必调得通** —— 官方限定「仅 M Plan 和 MiniMax Code 提供」。
-   若选中后报鉴权/额度错误，那是**套餐限制，不是配置写错**。要走 M Plan。
+   `id/contextWindow/maxTokens/input`。（**仍然成立**）
+2. ~~普通 `MINIMAX_CN_API_KEY` 未必调得通~~ —— **2026-10-23 实测：调得通，HTTP 200**。
+   「仅 M Plan 提供」那句是**当时的套餐政策说明**，不是接口鉴权限制。
 
 ### ⚠️ 我在这里犯过一次方法错误，值得记下
 
