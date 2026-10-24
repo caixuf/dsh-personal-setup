@@ -266,6 +266,7 @@ bash scripts/apply.sh --dsh
 | **ccp** | https://github.com/caixuf/claude-code-providers | Claude Code Provider Switcher。一键 `bash install.sh`。**必须克隆到 `~/code/claude-code-providers`**（`ccp sync` 按此路径查找） |
 | **dsh-native-mobile** | https://github.com/caixuf/dsh-native-mobile | 🔴 **自研**，含 `dsh-mobile-gateway`（原生移动端网关）。**未发 npm**，`dsh plugin add` 必 404 —— 只能从本地源码装。须 clone 到 **`dsh-personal-setup` 的同级目录**（`install-dsh.ps1` 靠相邻关系发现） |
 | **dsh-rea** | https://github.com/caixuf/dsh-rea | 🔴 **自研**，逆向工程助手插件。**未发 npm**，同样只能从本地源码装 + 同级目录 |
+| **dsh-prompt-armor** | https://github.com/caixuf/dsh-prompt-armor | ✅ **自研**，按模型/渠道注入系统提示词。**已发 npm tgz**（GitHub release 带包），`install_bundle` 装 tgz 即可，**不要** `file:` 目录直连（会建成 junction、依赖解析失败）。见 `intent/dsh.md` 专节 |
 | **dsh-wsl-workspace** | 上游 https://github.com/dsh-wsl-workspace-maintainers/dsh-wsl-workspace | 本机装的是**本地 fork**（分支 `feat/wsl-user-skills-075` @ `f1f30d2`），源码已随本仓 `forks/dsh-wsl-workspace/` 入库（见下「fork 例外」）。⚠️ 上游 `0.7.7` **重写了 preset 派生机制**，装上会让所有 WSL 会话报 `Unknown agent preset: wsl-standard` |
 | DSH 本体 | https://github.com/deepseek-ai/deepseek-harness | 官方 |
 | `dsh-our-free-model` | **npm：`dsh-our-free-model`**（另有旧机 `file:` tgz 私存副本） | ✅ 作者**已正式发布到 npm**（`^2.1.0`，peer `^0.2.0-rc.1` 匹配 `0.2.0-rc.2`），直接装即可；旧机那条 `file:` 依赖**不必**带到新机 |

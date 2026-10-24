@@ -54,6 +54,7 @@ DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经�
 | `@deepseek-ai/dsh-experimental-voice-input-bundle` | **语音输入**（官方实验） | ⚠️ **只有输入（STT），没有输出（TTS）** —— 做不了「像语音通话那样对话」 |
 | `dsh-browser-cdp` | **浏览器自动化**（能力级） | 用**你已装的 Chrome**，**38 个** `bcdp_*` 工具。见 `ecosystem.md` |
 | `dsh-wallpaper-bg` | **壁纸**（外观） | 只做壁纸，peer 仅 `react`。见 `ecosystem.md` |
+| `dsh-prompt-armor` | **按模型/渠道注入系统提示词**（自研） | ✅ 开源 `caixuf/dsh-prompt-armor`，从 npm tgz 装。见下方「`dsh-prompt-armor`」专节。**涉及"破甲"类需求，先把那个节读完** |
 | `dsh-mobile` | 手机远程操控 DSH | ❌ **已卸载**，见下方专节（新机不要装） |
 
 ### ⚠️ 包装错名陷阱（曾踩过）
@@ -851,6 +852,68 @@ bash scripts/patches/dsh-bot-gateway-focus-guard.sh
 支持免打扰时段（可跨零点）。
 
 ⚠️ 这项会把你的屏幕内容发到聊天软件 —— **按需开启，不用时关掉**。
+
+## ✅ `dsh-prompt-armor`（按模型/渠道注入系统提示词，自研开源，2026-10-24 落地）
+
+- **所属项目**：自研开源项目 [github.com/caixuf/dsh-prompt-armor](https://github.com/caixuf/dsh-prompt-armor)（MIT，≤v0.1.0 起）
+- **定位**：给每个模型/渠道配一份**可替换的系统提示词**，按当前 agent 的
+  `model` / `provider` 匹配后注入。这是「破甲」类需求（让模型别老拒绝干活、
+  别加免责声明）的**基础设施** —— 插件只做**投递**，正文由用户填。
+- **形态**：标准 bundle，Host + Client 双半。
+  - Host：`ctx.systemPrompt.section({name:'dsh-prompt-armor:profile', order:-100000,
+    interpolate:false, text})` —— **零 `@deepseek-ai/*` 核心文件改动**，升级不坏
+    （对比上游 `dsh-purge`：355KB 字符串替换表改核心文件，版本脆、npm 重装即失效）。
+  - Client：`settings.section` 注册 `id:'prompt-armor', order:48`，导航「模型提示词」。
+    纯 `React.createElement` 手写（无构建），走宿主 web server `/system-prompt-armor/api`
+    JSON 路由；**写请求必须带自定义头 `x-dsh-prompt-armor:1`**（防跨源 CSRF）。
+- **安装**：从 npm tgz 装（`remove_bundle` 后 `install_bundle <tgz>`）。⚠️ **不能用目录
+  `file:` 直连** —— pnpm 会建成 junction，包内 `import` 依赖按 realpath 解析会找不到；
+  必须打包成 tgz 让 pnpm 当真实包装进 profile。
+- **数据位置**：`$DSH_HOME/prompt-armor/index.json` + `profiles/<id>.md`（纯文本可手改，
+  插件 1s mtime 节流后**同步**重载，改完下一步生效，**无需重启**）。
+- **匹配语义**：一个 pattern 对 `model`、`provider/model`、`provider` 三个候选都试；
+  精确名 > 长通配 > 短通配；禁用不参与；无匹配则整段为空、prompt 原样。
+  ⚠️ **活体 agent 的 options 里 `model` 与 `provider` 是分开的**（如
+  `model:"MiniMax-M3.1-Flash"` + `provider:"minimax-cn"`），不是 `"minimax-cn/..."` 一体串
+  —— 只匹配 model 会让 `minimax-cn/*` 这类渠道 pattern 永远不命中。
+- **变量**：正文里 `{{model}}` / `{{provider}}` 由插件自己替换
+  （section 设 `interpolate:false`，宿主不插值 → 正文里其它任意 `{{...}}` 不会让组装抛错）。
+- **验证接口**（宿主真实组装，非猜测）：
+  ```
+  GET /system-prompt-armor/api/state     # 配置列表
+  GET /system-prompt-armor/api/prompt    # 当前 agent 实际组装出的 prompt 段
+  GET /system-prompt-armor/api/match?x-dsh-model=..&x-dsh-provider=..   # 某模型会命中哪条
+  ```
+- **当前配置**：一条 `operator`「工作人格（全模型）」(models=`*`)。正文在
+  `examples/operator-zh.md` / `operator-en.md`：直给说话方式（不写「作为 AI」、不给
+  免责声明、不预告、不追问）+ 常规范围（CTF/自有靶场/授权渗透/逆向/样本分析）+ 五类硬边界。
+- **踩坑实录**（都真实踩过）：
+  1. `section.text` 是**同步**的 → 热重载必须同步 `readFileSync`，异步会在「发现变化的
+     那一次组装」之后才生效。
+  2. section 必须在 `apply()` 里**同步注册**，别包进 `ctx.effect(async function*…)`，
+     否则晚注册会缺席宿主最早几次组装。
+  3. **Client 组件里拿不到 `ctx`**（组件定义在 factory 作用域，`ctx` 只是 `apply` 参数）→
+     面板一点就 ReferenceError。修法：模块级 `let translate`，`apply` 里赋值（theme-studio
+     的 bridge 同款）。**改 client.js 后必须重装 + 刷新界面**（HMR 不一定覆盖客户端模块）。
+  4. 会话日志**不能**用来验证注入的 system prompt：`system/message` 事件只在会话开头/
+     换模型时落一次，每请求的渲染后 prompt 不进日志；`request/header` 只存 config+tools。
+     验证只能靠插件把宿主 `assemble()` 结果报出来（上面的 `/api/prompt`）。
+  5. 装完后用 `cordis_inspect_query` 确认激活：`Config.listConfigs` 的 status
+     `inactive → schema` 即活（`plugin_manager` 报 `applied` 才算，别只看包落盘）。
+     ⚠️ inspect 参数对象里 **`provider` 键要排第一**，否则报 "missing required property"
+     这种误导性错误。
+
+### 📌 关于「破甲」（它管什么、不管什么）
+
+- 插件**管**：把一段可在 UI/文件里编辑的正文塞进每次请求的 system prompt 顶部，
+  按模型分流，改完立即生效，零核心文件改动。
+- 插件**不管**：具体正文内容。要什么效果取决于写什么 —— 「别拒绝干活、别加免责声明、
+  直接给结果」这类行为要求写进正文就会生效；模型/渠道不同可能需要不同措辞
+  （这正是按模型分派的价值）。
+- 上游 `dsh-purge`（未装）默认带一份「小码酱」人设正文（26KB，含意图路由话术），
+  它的**机制**与本插件等价但实现脆弱（改核心文件）；它那句「每个模型换不同提示词」
+  其实**没实现**（全仓无 model/provider 键，已读源码核实）。要做同款效果，
+  用本插件 + 自己写正文即可。
 
 ## 外观取向（用户偏好）
 
