@@ -1,5 +1,22 @@
 {
   "@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2": [
-    "0.2.1-rc.2"
+    "0.2.1-rc.2",
+    "0.2.1-rc.3"
+  ],
+  "dsh-browser-cdp@1.6.0": [
+    "0.2.1-rc.2",
+    "0.2.1-rc.3"
+  ],
+  "@anionex/dsh-eye-care@0.1.3": [
+    "0.2.1-rc.2",
+    "0.2.1-rc.3"
+  ],
+  "@deepseek-ai/dsh-subagent-claude-code@0.2.1-rc.2": [
+    "0.2.1-rc.2",
+    "0.2.1-rc.3"
+  ],
+  "@deepseek-ai/dsh-subagent-codex@0.2.1-rc.2": [
+    "0.2.1-rc.2",
+    "0.2.1-rc.3"
   ]
 }

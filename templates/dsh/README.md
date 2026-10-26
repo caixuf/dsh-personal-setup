@@ -1,6 +1,6 @@
 # templates/dsh/ — 使用说明
 
-> **最后复核：2026-10-18**（DSH 升到 0.2.1-rc.2 后逐项重核；见下面的「当前实机状态」）
+> **最后复核：2026-10-26**（DSH 升到 0.2.1-rc.3 后逐项重核；见下面的「当前实机状态」）
 
 ## 本目录内容
 
@@ -66,11 +66,11 @@ $lnk.Save()
 > 想要「静默进托盘」当前版本做不到，只能接受它开窗。
 
 
-## 当前实机状态（2026-10-18 实测，模板即按此对齐）
+## 当前实机状态（2026-10-26 实测，模板即按此对齐）
 
 | 项 | 值 |
 |---|---|
-| DSH 内核 | **0.2.1-rc.2** |
+| DSH 内核 | **0.2.1-rc.3** |
 | bundle 数 | **28**（含 0.2.1 新增的 10 个官方 `experimental-*` / `subagent-*`；`dsh-whale-girl-pet` 已关掉但**模板保留**作为默认基线，故模板与其依赖各 18 条） |
 | 依赖条数 | **18**（含 2 个自研宿主插件：`dsh-mobile-gateway` / `dsh-rea`） |
 | 机器级 patch | **3 行**：`dsh-bot-gateway` / `dsh-mobile-gateway` / `dsh-rea` |
@@ -81,7 +81,7 @@ $lnk.Save()
 | `dsh-sync.syncOnStartup` | **`false`**（启动同步 15.7s 会堵住模型插件） |
 | `dsh-sync.syncSettings` | **`false`**（0.2.1 起这条路空转，见下「第五/六条」） |
 | `bot-gateway` | **`disabled: true`**（写在机器级 patch，profile 层写无效，见下） |
-| `compatibility.json` | **1 条豁免**（0.2.1 起准入一票否决；另两个包新版本已自行支持 0.2.1，见下） |
+| `compatibility.json` | **5 条豁免**（有 `engines.dsh` 只看它，没有才校验 `@deepseek-ai/dsh*` peer；peer 精确锁版本的包每次升 DSH 都要补一行，见下） |
 
 ## 🔴 2026-10-18 追加：两个「静默失效」的配置项
 
@@ -115,17 +115,20 @@ $lnk.Save()
    手机要连局域网/公网走**外部转发**（`lan-bridge/` + `frpc`），不改这里。
 2. **`remote-web-ui` 整行禁用**：`lanBind: true` 会写 `0.0.0.0`（触发上面第 1 条），
    `lanBind: false` 又每次启动强制写回 `127.0.0.1` 覆盖手工配置。0.4.7 仍未修。
-3. **插件准入规则变了**：manifest 声明 `engines.dsh` 时**该范围一票否决**、
-   忽略 peerDependencies（0.2.0 是相反逻辑），不合格的 bundle 整个进 `skippedBundles`
-   （插件静悄悄消失）。豁免写在 profile 下的 `compatibility.json`：
-   `{"<pkg>@<ver>": ["0.2.1-rc.2"]}`（值必须是**精确版本数组**，版本一变即失效）。
-   实测（2026-10-20）真正需要豁免的只有 **1 个**：
-   `@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2`（模型 provider！其 peer 精确锁死 `0.2.0-rc.2`）。
+3. **插件准入规则**：manifest 有 `engines.dsh` 就只看它；**没有**才逐个校验所有
+   `@deepseek-ai/dsh*` 的 `peerDependencies` 范围（`dsh-app-boot/lib/index.js:279-326`）。
+   不满足的 bundle 整个进 `skippedBundles`，**静悄悄消失**（不报错、宿主照常启动）。
+   所以 peer 精确锁死某补丁版本的插件**每次升 DSH 都要补一行豁免**：
+   `{"<pkg>@<ver>": ["<DSH 精确版本>", …]}`（值必须是**精确版本数组**；加新版本即可，不必删旧值）。
+   2026-10-26 升 `0.2.1-rc.3` 后实际需要 **5 条**：`@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2`
+   （**模型 provider，最高优先级**）、`dsh-browser-cdp@1.6.0`、`@anionex/dsh-eye-care@0.1.3`、
+   `@deepseek-ai/dsh-subagent-claude-code@0.2.1-rc.2`、`@deepseek-ai/dsh-subagent-codex@0.2.1-rc.2`。
+   完整经过见 `intent/dsh.md` 的「0.2.1-rc.3 升级」节。
 
-   > ⚠️ 早前这里还列了 `@anionex/dsh-eye-care@0.1.2` 与 `dsh-browser-cdp@1.2.1`，
-   > 那是**过时值**：`^0.1.2` 实际装到 `0.1.3`、`^1.2.1` 实际装到 `1.2.3`，
-   > 而豁免按**精确版本**匹配，写旧版本等于没写。且这两个新版本的
-   > `engines.dsh` / `peerDependencies` 已包含 `0.2.1-rc.2`，本来就不需要豁免。
+   > 🔴 早前这里写「忽略 peerDependencies、真正需要豁免的只有 1 个」——**那是错的**。
+   > 当时的包恰好 engines/peer 覆盖了 `0.2.1-rc.2`；一升到 rc.3 就整批失效，
+   > 表现为**模型供应商全消失 + 浏览器工具消失**。
+   > 可观察判据：`cdp-cast-worker` 进程数是否为 0（rc.3 升完第一次就是 0）。
 4. **`dsh-wsl-workspace` 的 `{{cwd}}` 会让 WSL 会话每轮报错**
    （`unknown prompt variable "{{cwd}}"` in section `deployment:persona-prefix`；
    0.2.1 的该段只注册 `provider`、`model`）。v0.7.5/v0.7.7 都有这个串。

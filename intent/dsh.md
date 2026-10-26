@@ -27,7 +27,7 @@ DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经�
 
 | 项 | 值 | 说明 |
 |---|---|---|
-| DSH 版本 | **`0.2.1-rc.2`**（2026-10-18 升） | 见下面「0.2.1 升级与适配」；旧值 0.2.0-rc.2 |
+| DSH 版本 | **`0.2.1-rc.3`**（2026-10-26 升） | 见「0.2.1 升级与适配」与「0.2.1-rc.3 升级」；旧值 0.2.1-rc.2 / 0.2.0-rc.2 |
 | 更新源 | 只有 nightly 一条线 | `download.deepseek.com/dsh-desk/feeds/win-x64/`，无 stable/beta；`electron-updater` 的 `autoDownload=false`、`allowDowngrade=false`，回滚要手动跑旧安装包 |
 | 内置 Node | **v24.21.0** | 来自 `runtime/primary-runtime/dependencies/node` |
 | profile 名 | **`desktop`** | 路径 `~/.dsh/profiles/desktop/` |
@@ -160,7 +160,7 @@ Intelligence Co., Ltd."`，与 `app-update.yml` 的 `publisherName` 一致）。
 |---|---|---|
 | 1 | `webserver` 硬拒绝 `0.0.0.0`（通配=RCE 面）。它是 **required** 插件，起不来会拖垮 10 个依赖 `webServer` 的插件 → 启动失败 → recovery 清配置 | profile patch 写 `host: '127.0.0.1'`；手机走外部转发（`templates/dsh/lan-bridge/` + `frpc`） |
 | 2 | `remote-web-ui` 与 0.2.1 冲突（`lanBind: true` 写 `0.0.0.0`；`false` 又强制写回 `127.0.0.1` 覆盖手工配置）。0.4.7 仍未修 | 整行 `disabled: true` |
-| 3 | 插件准入规则变：声明 `engines.dsh` 时**一票否决**、忽略 peerDeps，不合格的静默进 `skippedBundles` | profile 下 `compatibility.json`：`{"<pkg>@<ver>": ["0.2.1-rc.2"]}`（值必须精确版本**数组**）。本机豁免 3 个：`@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2`（**模型 provider，最高优先级**）、`@anionex/dsh-eye-care@0.1.2`、`dsh-browser-cdp@1.2.1` |
+| 3 | 插件准入规则：**有 `engines.dsh` 就只看它；没有才逐个校验所有 `@deepseek-ai/dsh*` 的 peer 范围**（peer 精确锁死某补丁版本的包，每次升 DSH 都会整批失效）。不合格静默进 `skippedBundles`，不报错 | profile 下 `compatibility.json`：`{"<pkg>@<ver>": ["<DSH精确版本>", …]}`（值必须精确版本**数组**，加新版本即可、不必删旧值）。当前 5 条豁免，见「0.2.1-rc.3 升级」节 |
 | 4 | `dsh-wsl-workspace` 的 `PERSONA_APPEND` 含 `{{cwd}}`，而 0.2.1 的 `deployment:persona-prefix` 只注册 `provider`/`model` → **每个 wsl-standard 会话每一轮都失败**：`unknown prompt variable "{{cwd}}"` | 改 `lib/index.js` 把 `{{cwd}}` 删掉（v0.7.5/v0.7.7 都有此串，npm 无修复版） |
 
 ### 升级后的性能问题（已修）
@@ -200,6 +200,59 @@ Intelligence Co., Ltd."`，与 `app-update.yml` 的 `publisherName` 一致）。
 - `dsh-mobile-gateway` 需**两处**补丁才兼容 0.2.1（`ctx.connection.browserPeer`、
   `apiFetch.fetch(upstream, peer)`），已提交 `dsh-native-mobile@97d2683`。
 - 手机 App 配对的是局域网地址，靠 `templates/dsh/lan-bridge/` 的 TCP 桥接上回环。
+
+## 🔴 0.2.1-rc.3 升级（2026-10-26）：准入规则的真实语义 + 5 个插件被静默跳过
+
+**版本**：`0.2.1-rc.2` → **`0.2.1-rc.3`**（nightly feed，`releaseDate 2026-10-23`；
+包 `deepseek-harness-0.2.1-rc.3-win-x64.exe`，289,415,960 B / 276 MiB）。
+SHA512 与 feed 一致、Authenticode 签名有效（Hangzhou DeepSeek）。
+
+**安装**：`/S` 静默安装**连续两次失败** —— 安装器退出码 **2**，
+`installer-logs/directory-failure-*.log` 记 `MoveFileExW` → **Windows error 5（拒绝访问）**，
+`promote` 重试 10 次全失败，`DeepSeek Harness.new-{GUID}` 原地回滚，版本不变。
+**改用可见的交互式安装窗口一次成功**（装前彻底退出客户端，含托盘）。
+⚠️ 看到 error 5 别急着改 ACL —— 目录 ACL 实测正常（`20247` 为 FullControl），
+这条错误更像是「安装器替换目录时被占用/被拦」，先换可见安装器看提示。
+
+### 规则更正（此前文档写错，正是这次翻车的直接原因）
+
+旧文档写「声明 `engines.dsh` 时一票否决、**忽略 peerDependencies**」——**后半句是错的**。
+`dsh-app-boot/lib/index.js:279-326` 的真实逻辑：
+
+1. 有 `engines.dsh` → 只看它（peer 完全不看）；
+2. **没有** `engines.dsh` → 逐个校验所有 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-*` 的
+   `peerDependencies` 范围。
+
+所以「peer 精确锁死某个补丁版本」的插件（如 pi-ai 锁 `0.2.0-rc.2`）**每次升 DSH 都会失效**。
+豁免 `{"<pkg>@<ver>": ["<DSH 精确版本>", …]}` 按 `pkg@ver` 精确匹配、用
+`includes(runtimeVersion)` 判定 → **给数组加一个版本号即可，不必删旧值**（回滚还能用）。
+
+### 症状：配置在、插件不在（不是 profile 被清空）
+
+升级后模型供应商与浏览器工具**同时**消失，默认模型被改写成
+`deepseek-account / deepseek-flash`（`agent-default-model` 回退后写回 `cordis.patch.yml`）。被跳过的 5 个：
+
+| 包 | 不满足的原因 | 丢掉的能 |
+|---|---|---|
+| `@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2` | peer 精确锁 `0.2.0-rc.2` | **minimax / ccp / opendesign / codex 四个 provider 全没** |
+| `dsh-browser-cdp@1.6.0` | `engines.dsh` 枚举到 `0.2.1-rc.2` 为止 | 38 个 `bcdp_*` 工具 |
+| `@anionex/dsh-eye-care@0.1.3` | peer `^0.1.0-rc.6 \|\| 0.2.0-rc.2 \|\| 0.2.1-rc.2` | 护眼主题 |
+| `@deepseek-ai/dsh-subagent-claude-code@0.2.1-rc.2` | peer 精确锁 `0.2.1-rc.2` | Claude Code 子代理 |
+| `@deepseek-ai/dsh-subagent-codex@0.2.1-rc.2` | 同上 | Codex 子代理 |
+
+**可观察判据**：`cdp-cast-worker` 进程 —— rc.2 下常驻，被跳过时**为 0**
+（`Get-CimInstance Win32_Process | ? CommandLine -match 'cdp-cast-worker'`）。
+
+### 修法（已验证，不必重装或降级）
+
+1. `~/.dsh/profiles/desktop/compatibility.json` 给上述 5 个 key 的数组加 `"0.2.1-rc.3"`；
+   模板 `templates/dsh/compatibility.json` 同步。
+2. `agent-default-model` 恢复成升级前的选择（本机 `codex / gpt-6.1-sol`）。
+3. **不需要重启**：DSH 监听 profile 变更后自动重挂（实测 30s 内），
+   `llm-pi-ai` 的 Config 状态 `inactive` → `schema`、`cdp-cast-worker` 进程出现、`bcdp_*` 工具回到会话。
+
+> 判据提醒：`cordis_inspect` 的 `Config.status` 里 **`inactive` 不等于未加载**
+> （`tool-pwsh` 也是 inactive 却正常可用）；看 `schema` 与「条目是否存在」才有效。
 
 ## 🔴 2026-10-18：一次「以为修好了、其实只修了一层」的完整教训
 
@@ -1643,7 +1696,7 @@ allowBuilds:
 | 项 | 值 |
 |---|---|
 | 修复前 | `dsh-wsl-tool@1.11.0`（2026-10-06 发布） |
-| 本机宿主 | DSH **`0.2.1-rc.2`**（2026-10-18 起） |
+| 本机宿主 | DSH **`0.2.1-rc.3`**（2026-10-26 起；此前 0.2.1-rc.2） |
 | 1.11.0 的 `engines.dsh` | `>=0.1.7-rc.2` —— 而它的 README 写明**只在 0.1.7-rc.2 上验证过** |
 | 修复后 | **`1.12.5`**（2026-10-12）→ **2026-10-22 升到 `1.12.8`** |
 
