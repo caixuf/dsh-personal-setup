@@ -85,15 +85,24 @@
             maxTokens: 196608
             input:
               - text
-      ccp:
+      # 走本机 ccp 桥（WSL: sse_watchdog:4000 → litellm:4001 → 千帆 / opendesign / …）。
+      # 🔴 旧配置里 `ccp:` + `cmdc-deepseek-fast[1m]` 已失效（2026-10-28 实测）：
+      #   ① 模型名不在 litellm 表内 → 400 Invalid model name
+      #   ② apiKeyEnv 指向旧 key（非 litellm master_key）→ 400 No connected db
+      # 正确值：模型名带 provider 前缀；key 必须是 litellm `general_settings.master_key`。
+      # `ccp models qianfan` 实测：1M 上下文 / 393216 输出 / 支持图片。
+      qianfan:
         apiKeyEnv: CCP_API_KEY
         api: openai-completions
         baseURL: http://127.0.0.1:4000/v1
         models:
-          - id: cmdc-deepseek-fast[1m]
-            name: cmdc-deepseek-fast[1m]
+          - id: 'qianfan-deepseek-v4.1-flash[1m]'
+            name: DeepSeek-V4.1-Flash（千帆）
             contextWindow: 1000000
-            maxTokens: 64000
+            maxTokens: 393216
+            input:
+              - text
+              - image
       # ⚠️ 机器本地 provider：本机在用，但换机需要自己的 key（refs: OPENDESIGN_API_KEY）。
       # 没有该 key 时不会报错，只会**静默调不通** —— 不想要就整段删掉。
       opendesign:

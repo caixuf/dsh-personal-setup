@@ -70,7 +70,7 @@
 | 变量名 | 来源 | 获取方式 |
 |---|---|---|
 | `MINIMAX_CN_API_KEY` | MiniMax 中国站 | MiniMax 控制台申请 |
-| `CCP_API_KEY` | ccp / commandcode | `~/.ccp` 系统配置 |
+| `CCP_API_KEY` | ccp 本地桥（litellm :4000/:4001） | **必须是 litellm 的 `general_settings.master_key`**（见 `~/.config/litellm/config.yaml`），不是真实上游密钥 |
 | `OPENDESIGN_API_KEY` | opendesign（`amr-link.open-design.ai`） | 🔴 **本机 `agent-default-model` 正在用它**；新机若要沿用需自备 key |
 | `BUDDY_ACCOUNT_8B057D96` / `BUDDY_ACCOUNT_D97EE071` | 账号渠道（free-model 插件） | 插件内登录 |
 | `WORKBUDDY_ACCOUNT_B68139B6` | 账号渠道（free-model 插件） | 插件内登录 |
@@ -84,7 +84,10 @@
 > ⚠️ 旧版本本文写「4 个 ref」并只列了 `BUDDY_ACCOUNT_41221658` /
 > `WORKBUDDY_ACCOUNT_11451829` 两个**已不再存在的**账号 ID ——
 > **2026-10-14 已按实机重新枚举为 14 条**。这类账号 ID 会随重新登录变化，别照抄。
-> 另：`CCP_API_KEY` 本机值 `sk-cmdc-litellm-local` 是**本地网关的固定占位串**，不是真密钥。
+> 另：`CCP_API_KEY` 是**本地网关的固定占位串**，不是真密钥。
+> **2026-10-28 起值为 `sk-ccp-litellm-local`**（= litellm 的 `master_key`）；
+> 旧值 `sk-cmdc-litellm-local` 会让经桥的请求一律 `400 No connected db` ——
+> key 换了不会自动迁移，改 litellm 配置时要同步这里。
 
 **注意**：`*_ACCOUNT_*` 都是**账号渠道**的登录态，
 由 `dsh-our-free-model` 等插件管理。新机应**通过插件重新登录**，而不是拷这个文件。

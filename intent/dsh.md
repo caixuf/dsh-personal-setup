@@ -1855,14 +1855,36 @@ pi-ai 内置目录（`dist/providers/data/minimax-cn.json`，API 走 `anthropic-
 ### ccp（本地 4000 端口的 OpenAI 兼容网关）
 
 ```yaml
-ccp:
+qianfan:                       # 旧名 ccp；2026-10-28 改名，名字对应它实际服务的上游
   apiKeyEnv: CCP_API_KEY
   api: openai-completions
   baseURL: http://127.0.0.1:4000/v1
+  models:
+    - id: 'qianfan-deepseek-v4.1-flash[1m]'
+      name: DeepSeek-V4.1-Flash（千帆）
+      contextWindow: 1000000
+      maxTokens: 393216
+      input: [text, image]
 ```
+
+🔴 **2026-10-28 实测：这条链路曾有两个「配置还在、值早失效」的字段**，
+两者都报 400、但报错完全不同，很容易误判成网络/代理问题：
+
+| 报错 | 真因 | 正确值 |
+|---|---|---|
+| `400 Invalid model name passed in model=cmdc-deepseek-fast` | litellm 的 model 名**带 provider 前缀**，旧的 `cmdc-deepseek-fast[1m]` 早已不在表内 | `qianfan-deepseek-v4.1-flash[1m]` |
+| `400 No connected db.` | `apiKeyEnv` 指向的不是 litellm 的 `general_settings.master_key` | `~/.config/litellm/config.yaml` 的 `master_key` |
+
+**排查顺序**（别只看 DSH 配置文件里写了什么）：
+`ccp -c` 看桥当前 provider → `curl -H "Authorization: Bearer <master_key>" http://127.0.0.1:4000/v1/models`
+拿真实模型名（`ccp models <provider>` 同样能列）→ 再回填 DSH 的 provider 段。
 
 ⚠️ `baseURL` **不要写成 `" http://..."`**（前面多一个空格）——
 YAML 里带前导空格的标量仍会被当字符串传下去，表现为连不通。
+
+**本机收敛结果**：v4.1-flash 只留两条通路 —— **opendesign 直连**（不经桥，WSL 挂了也能用）
++ **qianfan 走桥**（依赖 WSL 的 litellm/watchdog 常驻）。桥上的 cline/trae/opendesign-* 等
+其余 70 个模型不再进 DSH。
 
 ## ⚠️ 关于 `plugin_manager` 报的 37 条 peer-gap 警告
 

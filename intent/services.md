@@ -133,10 +133,12 @@ ccp bridge <action>        # 本地 bridge 管理（status/restart/start/stop/lo
 ccp auth copilot           # Copilot 设备流认证
 ```
 
-**当前 active**（实测）：`cmdc-deepseek-fast`（model `cmdc-deepseek-fast[1m]`）
+**当前 active**（2026-10-28 实测 `ccp -c`）：`opendesign`（model `deepseek-v4.1-flash`，
+端点 `https://amr-link.open-design.ai`）
 
-**可用 provider 清单**（实测）：`cline-deepseek`、`cmdc-deepseek-fast`、`cmdc-deepseek-pro`、
-`cmdc-deepseek`、`cmdc-vision`、`copilot`、`deepseek`、`minimax`
+**可用 provider 清单**（按 `~/.claude/providers/` 实机枚举）：`cline`、`codex`、`deepseek`、
+`minimax`、`opendesign`、`qianfan`、`trae`（另有若干 `.bak-*`）。
+`ccp models <provider>` 可列某家的模型与上下文/输出上限。
 
 ### `env.sh` 生成的内容（指向本地 litellm 4000）
 
