@@ -1886,6 +1886,17 @@ YAML 里带前导空格的标量仍会被当字符串传下去，表现为连不
 + **qianfan 走桥**（依赖 WSL 的 litellm/watchdog 常驻）。桥上的 cline/trae/opendesign-* 等
 其余 70 个模型不再进 DSH。
 
+🔴 **2026-10-28 补记：key 错了不止 400**。上表那行 `400 No connected db.` 是
+"key 与 litellm 的 `master_key` 不一致"；**一个 key 都不带**则更怪 ——
+LiteLLM 自己的异常处理里 `import prisma`（未安装），直接 **500**。
+两种报错都不像"key 不对"，很容易当成网关挂了。
+
+ccp 侧已根治：桥接层现在**无条件转发 LiteLLM 真正接受的 key**
+（`bridge/bridge_auth.py`，从它实际加载的 config 里读），客户端带旧 key、
+带错 key、不带 key，调用都能通。但**配置本身仍应写对**：`ccp sync` 会把
+`~/.claude/settings.json` 里指向网关的 token 改成当前 key，`ccp doctor` 会报出
+还带着旧值的配置。
+
 ## ⚠️ 关于 `plugin_manager` 报的 37 条 peer-gap 警告
 
 **它们全是误报，忽略即可**（该诊断插件已卸载，此处仅存档结论）。

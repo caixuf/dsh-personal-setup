@@ -88,6 +88,14 @@
 > **2026-10-28 起值为 `sk-ccp-litellm-local`**（= litellm 的 `master_key`）；
 > 旧值 `sk-cmdc-litellm-local` 会让经桥的请求一律 `400 No connected db` ——
 > key 换了不会自动迁移，改 litellm 配置时要同步这里。
+>
+> 🔴 2026-10-28 实测踩坑：仓库这边改了，**机器上的三处没跟着改** ——
+> `~/.dsh/.credentials.yaml`、`~/.claude/settings.json`、`~/.hermes/config.yaml`
+> 都还带着旧值，于是 DSH 的 ccp 通道一探 `/v1/models` 就 400。
+> 一个 key 都不带更糟：LiteLLM 自己的异常处理里 `import prisma`（未安装），直接 500。
+> ccp 侧已根治：桥接层无条件转发 LiteLLM 真正接受的 key（`bridge/bridge_auth.py`），
+> 客户端带旧 key、带错 key、或者根本不带 key，调用都能通；
+> 但配置本身仍要写对（`ccp sync` 会改，`ccp doctor` 会报）。
 
 **注意**：`*_ACCOUNT_*` 都是**账号渠道**的登录态，
 由 `dsh-our-free-model` 等插件管理。新机应**通过插件重新登录**，而不是拷这个文件。

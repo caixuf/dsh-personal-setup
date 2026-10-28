@@ -395,4 +395,4 @@ model_list:
 
 
 general_settings:
-  master_key: sk-cmdc-litellm-local
+  master_key: sk-ccp-litellm-local
