@@ -186,12 +186,12 @@ bash scripts/apply.sh --dsh
 | WSL 网络模式 | 旧机 `mirrored`；**本机现为 `mirrored`**（2026-09-14 设，2026-10-20 复核） | ⚠️ 本文档早期写的「本机必须 NAT」已过时（证据见 `intent/wsl.md` 的「现状修正」）。portproxy 垫片**继续保留**（兼容层）。判据只有一条：代理**实测能出网** |
 | 代理绕过表 | **三套各读各的**：WinINET `ProxyOverride`（Chrome/Edge 读它）＝ `*.immotors.com;*.immotors.sgp1.com;172.100.*;localhost;127.*;10.*;172.16.*…172.31.*;192.168.*;192.168.0.0/16;<local>`；WinHTTP 与环境变量 `no_proxy` 另两套 | 🔴 WinINET 那套会被代理软件**改残**（只剩公司域名）→ 浏览器打不开内网而命令行正常。修：`scripts/win-proxy-bypass.ps1 -Apply`（改完**重启浏览器**）。见 `intent/wsl.md` |
 | free-model 包 | 旧机 `file:` tgz（`dsh-plugin-packages/*.tgz`） | ✅ **npm 上也有 `dsh-our-free-model@^2.1.0`，新机优先用 npm 版**，无需 tgz（本机 2026-10-12 已切） |
-| **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | 🔴 **2026-10-14 实测：该目录与本机 WSL 源仓都已不存在，fork 已回滚**。新机**默认不要装** fork（用官方 `^0.7.9`）；确有需要再按下面「WSL fork」重建 |
+| **WSL fork 运行副本** | `<Windows 工作目录>\dsh-wsl-workspace-fork` | 🔴 **2026-10-14 实测：该目录与本机 WSL 源仓都已不存在，fork 已回滚**。新机**默认不要装** fork（用官方 `0.7.12`）；确有需要再按下面「WSL fork」重建 |
 | 主机地址 | VPS 公网 IP + frp token | 见 `templates/dsh/frpc.toml` 的三处占位符与 `intent/新机器复刻清单.md` 第 3 步 |
 
 ### WSL fork：**选装**，不在模板默认清单里
 
-> ⚠️ **模板 `templates/dsh/package.json` 里是官方 `dsh-wsl-workspace: ^0.7.9`。**
+> ⚠️ **模板 `templates/dsh/package.json` 里是官方 `dsh-wsl-workspace: 0.7.12`。**
 > 这是**刻意的** —— 之前模板里写的是本机 `link:` 绝对路径，
 > 别的机器没有该目录，`install` 会直接报
 > `cannot resolve profile bundle "dsh-wsl-workspace"` **导致整套安装失败**。
@@ -203,7 +203,7 @@ bash scripts/apply.sh --dsh
 > 🔴 **2026-10-14 实测：fork 已不在本机运行。**
 > 实装的 `node_modules/dsh-wsl-workspace` 是**真实目录、官方 0.7.5**，
 > fork 的标志符号（`discoverUserSkillRoots` / `USER_DSH_RANK` / `resolveDistributionHome`）
-> 在实装 `lib/` 里**各 0 命中**；`package.json` 里是 `^0.7.9` 而非 `link:`；
+> 在实装 `lib/` 里**各 0 命中**；`package.json` 里是 `0.7.12` 而非 `link:`；
 > 两个运行/开发目录都不存在。
 > **后果**：WSL 用户级 skill 不再被加载 —— 当前 WSL 侧带 `SKILL.md` 的 skill
 > 只有 `~/.claude/skills` 7 个、`~/.agents/skills` 9 个（旧文档写的 61/62 已失效）。
@@ -238,7 +238,7 @@ bash scripts/apply.sh --dsh
 
 | 项 | 模板 | 本机实机 | 原因 |
 |---|---|---|---|
-| `dsh-wsl-workspace` | `^0.7.9` | `link:<本机路径>` | 本机装了 fork 让 61 个 WSL skill 可见 |
+| `dsh-wsl-workspace` | `0.7.12` | `link:<本机路径>` | 本机装了 fork 让 61 个 WSL skill 可见 |
 
 模板 = **通用基线**（任何机器直接可用）；实机 = 在基线上的**本机增强**。
 审计时不要把这个差异当「文档与实机不符」。
@@ -269,7 +269,7 @@ bash scripts/apply.sh --dsh
 | **dsh-prompt-armor** | https://github.com/caixuf/dsh-prompt-armor | ✅ **自研**，按模型/渠道注入系统提示词。**已发 npm tgz**（GitHub release 带包），`install_bundle` 装 tgz 即可，**不要** `file:` 目录直连（会建成 junction、依赖解析失败）。见 `intent/dsh.md` 专节 |
 | **dsh-wsl-workspace** | 上游 https://github.com/dsh-wsl-workspace-maintainers/dsh-wsl-workspace | 本机装的是**本地 fork**（分支 `feat/wsl-user-skills-075` @ `f1f30d2`），源码已随本仓 `forks/dsh-wsl-workspace/` 入库（见下「fork 例外」）。⚠️ 上游 `0.7.7` **重写了 preset 派生机制**，装上会让所有 WSL 会话报 `Unknown agent preset: wsl-standard` |
 | DSH 本体 | https://github.com/deepseek-ai/deepseek-harness | 官方 |
-| `dsh-our-free-model` | **npm：`dsh-our-free-model`**（另有旧机 `file:` tgz 私存副本） | ✅ 作者**已正式发布到 npm**（`^2.1.0`，peer `^0.2.0-rc.1` 匹配 `0.2.0-rc.2`），直接装即可；旧机那条 `file:` 依赖**不必**带到新机 |
+| `dsh-our-free-model` | **npm：`dsh-our-free-model`**（另有旧机 `file:` tgz 私存副本） | ✅ 作者**已正式发布到 npm**（`^2.1.0`，peer `^0.2.0-rc.1` 匹配 `0.2.1-rc.5`），直接装即可；旧机那条 `file:` 依赖**不必**带到新机 |
 
 > 🔴 **`dsh-mobile-gateway` / `dsh-rea` 这类自研插件没发 npm。**
 > 仓库里有它们的 `dependencies` 条目，但 `dsh plugin add` 会 404 ——

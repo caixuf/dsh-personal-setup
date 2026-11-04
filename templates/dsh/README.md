@@ -66,11 +66,11 @@ $lnk.Save()
 > 想要「静默进托盘」当前版本做不到，只能接受它开窗。
 
 
-## 当前实机状态（2026-10-26 实测，模板即按此对齐）
+## 当前实机状态（2026-11-04 实测，模板即按此对齐）
 
 | 项 | 值 |
 |---|---|
-| DSH 内核 | **0.2.1-rc.3** |
+| DSH 内核 | **0.2.1-rc.5** |
 | bundle 数 | **28**（含 0.2.1 新增的 10 个官方 `experimental-*` / `subagent-*`；`dsh-whale-girl-pet` 已关掉但**模板保留**作为默认基线，故模板与其依赖各 18 条） |
 | 依赖条数 | **18**（含 2 个自研宿主插件：`dsh-mobile-gateway` / `dsh-rea`） |
 | 机器级 patch | **3 行**：`dsh-bot-gateway` / `dsh-mobile-gateway` / `dsh-rea` |
@@ -81,7 +81,7 @@ $lnk.Save()
 | `dsh-sync.syncOnStartup` | **`false`**（启动同步 15.7s 会堵住模型插件） |
 | `dsh-sync.syncSettings` | **`false`**（0.2.1 起这条路空转，见下「第五/六条」） |
 | `bot-gateway` | **`disabled: true`**（写在机器级 patch，profile 层写无效，见下） |
-| `compatibility.json` | **5 条豁免**（有 `engines.dsh` 只看它，没有才校验 `@deepseek-ai/dsh*` peer；peer 精确锁版本的包每次升 DSH 都要补一行，见下） |
+| `compatibility.json` | **1 条豁免**（只剩 `@anionex/dsh-eye-care@0.1.3`，上游无新版）；其余不兼容**靠升级插件解决**，见 `intent/dsh.md`「0.2.1-rc.5 升级」节 |
 
 ## 🔴 2026-10-18 追加：两个「静默失效」的配置项
 
@@ -118,17 +118,22 @@ $lnk.Save()
 3. **插件准入规则**：manifest 有 `engines.dsh` 就只看它；**没有**才逐个校验所有
    `@deepseek-ai/dsh*` 的 `peerDependencies` 范围（`dsh-app-boot/lib/index.js:279-326`）。
    不满足的 bundle 整个进 `skippedBundles`，**静悄悄消失**（不报错、宿主照常启动）。
-   所以 peer 精确锁死某补丁版本的插件**每次升 DSH 都要补一行豁免**：
-   `{"<pkg>@<ver>": ["<DSH 精确版本>", …]}`（值必须是**精确版本数组**；加新版本即可，不必删旧值）。
-   2026-10-26 升 `0.2.1-rc.3` 后实际需要 **5 条**：`@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2`
-   （**模型 provider，最高优先级**）、`dsh-browser-cdp@1.6.0`、`@anionex/dsh-eye-care@0.1.3`、
-   `@deepseek-ai/dsh-subagent-claude-code@0.2.1-rc.2`、`@deepseek-ai/dsh-subagent-codex@0.2.1-rc.2`。
-   完整经过见 `intent/dsh.md` 的「0.2.1-rc.3 升级」节。
+   **首选修法是升级插件，不是加豁免**：
+   - 官方包的新版常发在 npm 的 **`next`** 标签（`latest` 可能还停在很早的版本，
+     按 `latest` 判断会误以为「没新版」）；
+   - profile 依赖里固定着的（pi-ai、subagent-*）改 `package.json` 精确版本后跑自带 pnpm；
+   - profile bundle（`list_bundles` 里 `removable:true`）用 `plugin_manager`
+     `remove_bundle` → `install_bundle`；
+   - **确实没有新版**（如 `@anionex/dsh-eye-care`，latest 就是 0.1.3）才写
+     `compatibility.json`：`{"<pkg>@<ver>": ["<DSH 精确版本>", …]}`。
+   2026-11-04 升 `0.2.1-rc.5` 后，靠升级解决了 pi-ai / browser-cdp / 两个 subagent，
+   豁免从 5 条降到 **1 条**。完整经过见 `intent/dsh.md`「0.2.1-rc.5 升级」节。
 
-   > 🔴 早前这里写「忽略 peerDependencies、真正需要豁免的只有 1 个」——**那是错的**。
-   > 当时的包恰好 engines/peer 覆盖了 `0.2.1-rc.2`；一升到 rc.3 就整批失效，
-   > 表现为**模型供应商全消失 + 浏览器工具消失**。
-   > 可观察判据：`cdp-cast-worker` 进程数是否为 0（rc.3 升完第一次就是 0）。
+   > 🔴 早前这里写过「忽略 peerDependencies、真正需要豁免的只有 1 个」和
+   > 「每次升 DSH 都要补一行豁免」——**都不对**。前者错在规则理解，
+   > 后者错在手段（该升级就别堆豁免）。症状始终是
+   > **模型供应商全消失 + 浏览器工具消失**；
+   > 可观察判据：`cdp-cast-worker` 进程数是否为 0。
 4. **`dsh-wsl-workspace` 的 `{{cwd}}` 会让 WSL 会话每轮报错**
    （`unknown prompt variable "{{cwd}}"` in section `deployment:persona-prefix`；
    0.2.1 的该段只注册 `provider`、`model`）。v0.7.5/v0.7.7 都有这个串。

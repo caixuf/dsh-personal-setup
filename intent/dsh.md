@@ -27,7 +27,7 @@ DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经�
 
 | 项 | 值 | 说明 |
 |---|---|---|
-| DSH 版本 | **`0.2.1-rc.3`**（2026-10-26 升） | 见「0.2.1 升级与适配」与「0.2.1-rc.3 升级」；旧值 0.2.1-rc.2 / 0.2.0-rc.2 |
+| DSH 版本 | **`0.2.1-rc.5`**（2026-11-04 升） | 见「0.2.1 升级与适配」「0.2.1-rc.3 升级」「0.2.1-rc.5 升级」；旧值 0.2.1-rc.3 / rc.2 / 0.2.0-rc.2 |
 | 更新源 | 只有 nightly 一条线 | `download.deepseek.com/dsh-desk/feeds/win-x64/`，无 stable/beta；`electron-updater` 的 `autoDownload=false`、`allowDowngrade=false`，回滚要手动跑旧安装包 |
 | 内置 Node | **v24.21.0** | 来自 `runtime/primary-runtime/dependencies/node` |
 | profile 名 | **`desktop`** | 路径 `~/.dsh/profiles/desktop/` |
@@ -94,7 +94,7 @@ lockfile 里没动过的包**保持原版本**）→ 核对 `node_modules` 里�
 
 | 包 | 旧 | 新 |
 |---|---|---|
-| `dsh-browser-cdp` | 1.2.3 | **1.6.0** |
+| `dsh-browser-cdp` | 1.2.3 | **1.7.5**（2026-11-04 再升，见 rc.5 节） |
 | `dsh-mnemon` | 0.5.25 | **0.5.34** |
 | `dsh-theme-studio` | 0.6.3 | **0.10.0** |
 | `dsh-terminal-panel` | 1.0.1 | **1.3.0** |
@@ -160,7 +160,7 @@ Intelligence Co., Ltd."`，与 `app-update.yml` 的 `publisherName` 一致）。
 |---|---|---|
 | 1 | `webserver` 硬拒绝 `0.0.0.0`（通配=RCE 面）。它是 **required** 插件，起不来会拖垮 10 个依赖 `webServer` 的插件 → 启动失败 → recovery 清配置 | profile patch 写 `host: '127.0.0.1'`；手机走外部转发（`templates/dsh/lan-bridge/` + `frpc`） |
 | 2 | `remote-web-ui` 与 0.2.1 冲突（`lanBind: true` 写 `0.0.0.0`；`false` 又强制写回 `127.0.0.1` 覆盖手工配置）。0.4.7 仍未修 | 整行 `disabled: true` |
-| 3 | 插件准入规则：**有 `engines.dsh` 就只看它；没有才逐个校验所有 `@deepseek-ai/dsh*` 的 peer 范围**（peer 精确锁死某补丁版本的包，每次升 DSH 都会整批失效）。不合格静默进 `skippedBundles`，不报错 | profile 下 `compatibility.json`：`{"<pkg>@<ver>": ["<DSH精确版本>", …]}`（值必须精确版本**数组**，加新版本即可、不必删旧值）。当前 5 条豁免，见「0.2.1-rc.3 升级」节 |
+| 3 | 插件准入规则：**有 `engines.dsh` 就只看它；没有才逐个校验所有 `@deepseek-ai/dsh*` 的 peer 范围**（peer 精确锁死某补丁版本的包，每次升 DSH 都会整批失效）。不合格静默进 `skippedBundles`，不报错 | **优先升级插件**（见「0.2.1-rc.5 升级」节的三种路径）；确实没有新版时才在 profile 下写 `compatibility.json`：`{"<pkg>@<ver>": ["<DSH精确版本>", …]}`。当前只剩 **1 条**豁免（`@anionex/dsh-eye-care@0.1.3`） |
 | 4 | `dsh-wsl-workspace` 的 `PERSONA_APPEND` 含 `{{cwd}}`，而 0.2.1 的 `deployment:persona-prefix` 只注册 `provider`/`model` → **每个 wsl-standard 会话每一轮都失败**：`unknown prompt variable "{{cwd}}"` | 改 `lib/index.js` 把 `{{cwd}}` 删掉（v0.7.5/v0.7.7 都有此串，npm 无修复版） |
 
 ### 升级后的性能问题（已修）
@@ -200,6 +200,66 @@ Intelligence Co., Ltd."`，与 `app-update.yml` 的 `publisherName` 一致）。
 - `dsh-mobile-gateway` 需**两处**补丁才兼容 0.2.1（`ctx.connection.browserPeer`、
   `apiFetch.fetch(upstream, peer)`），已提交 `dsh-native-mobile@97d2683`。
 - 手机 App 配对的是局域网地址，靠 `templates/dsh/lan-bridge/` 的 TCP 桥接上回环。
+
+## 🔴 0.2.1-rc.5 升级（2026-11-04）：这次靠**升级插件**解决，不再堆豁免
+
+**版本**：`0.2.1-rc.3` → **`0.2.1-rc.5`**。症状与 rc.3 那次一模一样：
+自定义供应商整体消失、`agent-default-model` 被改写成
+`deepseek-account / deepseek-flash`、浏览器 `bcdp_*` 工具与 subagent 工具消失。
+原因同一条：`compatibility.json` 里的豁免只写到 rc.3。
+
+### 关键发现：官方包的 rc.5 发在 npm 的 `next` 标签，不是 `latest`
+
+`@deepseek-ai/dsh-llm-pi-ai`、`dsh-subagent-codex`、`dsh-subagent-claude-code` 的
+`latest` 标签还停在 **`0.0.1-rc.1`**，而 `next` = **`0.2.1-rc.5`**。
+所以按 `latest` 判断会得出「没有新版」的结论 —— 查版本必须看 `dist-tags`：
+
+```bash
+python3 -c "import json,urllib.request;print(json.load(urllib.request.urlopen('https://registry.npmjs.org/@deepseek-ai%2Fdsh-llm-pi-ai'))['dist-tags'])"
+```
+
+### 三条升级路径（按插件类型选，别一律加豁免）
+
+| 类型 | 例 | 做法 |
+|---|---|---|
+| base 层行（profile 依赖里固定着旧版） | `dsh-llm-pi-ai`、`dsh-subagent-*` | 改 profile `package.json` 为**精确版本** → 跑自带 pnpm：`<app>/resources/runtime/primary-runtime/dependencies/node/bin/node.exe <…>/dependencies/pnpm/bin/pnpm.mjs install`（cwd=profile） |
+| profile bundle（`list_bundles` 里 `removable:true`） | `dsh-browser-cdp` | `plugin_manager remove_bundle <pkg>` → `install_bundle <pkg>@<ver>` |
+| 上游没有新版 | `@anionex/dsh-eye-care`（latest 就是 0.1.3） | 才写 `compatibility.json` 精确版本数组 |
+
+> ⚠️ `install_bundle` 对已装的包只会回 `already-installed`，**必须先 remove**；
+> 而 base 层的行用 `remove_bundle` 会回 `not-removable` —— 那类只能走改 `package.json`。
+
+### 本轮实装结果
+
+| 包 | 旧 | 新 |
+|---|---|---|
+| `@deepseek-ai/dsh-llm-pi-ai` | 0.2.0-rc.2 | **0.2.1-rc.5** |
+| `@deepseek-ai/dsh-subagent-codex` | 0.2.1-rc.2 | **0.2.1-rc.5** |
+| `@deepseek-ai/dsh-subagent-claude-code` | 0.2.1-rc.2 | **0.2.1-rc.5** |
+| `dsh-browser-cdp` | 1.6.0 | **1.7.5** |
+| `dsh-mnemon` | 0.5.34 | **0.5.39** |
+| `@linxin666/dsh-client-ui-skill-explorer` | 0.4.8 | **0.4.14** |
+| `@linxin666/dsh-remote-web-ui` | 0.4.8 | **0.4.14** |
+| `@weibaohui/dsh-sync` | 0.4.8 | **0.4.11** |
+| `dsh-wallpaper-bg` | 0.5.16 | **0.5.18** |
+| `dsh-whale-girl-pet` | 0.3.10 | **0.3.11** |
+| `dsh-bot-gateway` | 0.3.9-beta | **0.3.10-beta** |
+| `dsh-wsl-workspace` | 0.7.9 | **0.7.12** |
+
+`compatibility.json` 从 5 条精简到 **1 条**（只剩 eye-care，值里保留 rc.2/rc.3/rc.5）。
+`dsh-wsl-tool`（1.12.8→2.2.5）与 `dsh-theme-studio`（0.10→2.0）是**大版本**，
+本轮**没升**，留待单独确认。
+
+### 回滚与验证
+
+- 每次改动前备份 `package.json` / `pnpm-lock.yaml` / `cordis.patch.yml` /
+  `compatibility.json` / `.credentials.yaml`（`~/Downloads/dsh-*-backup-<ts>/`）。
+- 验证判据（都实测过）：`plugin_manager list_plugins` 里 `enabled=true` 且
+  `fiberPhase=active`；`cdp-cast-worker` 进程出现；会话里出现 `subagent_*` 工具；
+  `cordis_inspect` 的 `Config` 状态 `inactive → schema`。
+- 🔴 **改 `package.json` + pnpm 之后必须重启客户端**：新包已落盘，但 Node 进程里还是旧码
+  （判据：宿主进程创建时间早于 `pnpm-lock.yaml` 的 mtime 就是没加载新码）。
+  只改 `compatibility.json` 那种可以热挂载，不用重启。
 
 ## 🔴 0.2.1-rc.3 升级（2026-10-26）：准入规则的真实语义 + 5 个插件被静默跳过
 
@@ -1696,7 +1756,7 @@ allowBuilds:
 | 项 | 值 |
 |---|---|
 | 修复前 | `dsh-wsl-tool@1.11.0`（2026-10-06 发布） |
-| 本机宿主 | DSH **`0.2.1-rc.3`**（2026-10-26 起；此前 0.2.1-rc.2） |
+| 本机宿主 | DSH **`0.2.1-rc.5`**（2026-11-04 起；此前 rc.3 / rc.2） |
 | 1.11.0 的 `engines.dsh` | `>=0.1.7-rc.2` —— 而它的 README 写明**只在 0.1.7-rc.2 上验证过** |
 | 修复后 | **`1.12.5`**（2026-10-12）→ **2026-10-22 升到 `1.12.8`** |
 
