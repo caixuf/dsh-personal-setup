@@ -27,7 +27,7 @@ DSH 桌面端的插件组合与外观配置。共 **18 个 bundle**，全部经�
 
 | 项 | 值 | 说明 |
 |---|---|---|
-| DSH 版本 | **`0.2.1-rc.5`**（2026-11-04 升） | 见「0.2.1 升级与适配」「0.2.1-rc.3 升级」「0.2.1-rc.5 升级」；旧值 0.2.1-rc.3 / rc.2 / 0.2.0-rc.2 |
+| DSH 版本 | **`0.2.2-rc.1`**（2026-11-06 升） | 见「0.2.1 升级与适配」「0.2.1-rc.3 升级」「0.2.1-rc.5 升级」「0.2.2-rc.1 升级」；旧值 0.2.1-rc.5 / rc.3 / rc.2 / 0.2.0-rc.2 |
 | 更新源 | 只有 nightly 一条线 | `download.deepseek.com/dsh-desk/feeds/win-x64/`，无 stable/beta；`electron-updater` 的 `autoDownload=false`、`allowDowngrade=false`，回滚要手动跑旧安装包 |
 | 内置 Node | **v24.21.0** | 来自 `runtime/primary-runtime/dependencies/node` |
 | profile 名 | **`desktop`** | 路径 `~/.dsh/profiles/desktop/` |
@@ -200,6 +200,83 @@ Intelligence Co., Ltd."`，与 `app-update.yml` 的 `publisherName` 一致）。
 - `dsh-mobile-gateway` 需**两处**补丁才兼容 0.2.1（`ctx.connection.browserPeer`、
   `apiFetch.fetch(upstream, peer)`），已提交 `dsh-native-mobile@97d2683`。
 - 手机 App 配对的是局域网地址，靠 `templates/dsh/lan-bridge/` 的 TCP 桥接上回环。
+
+## 🔴 0.2.2-rc.1 升级（2026-11-06）：先升客户端本体，再升 3 个官方插件
+
+**版本**：`0.2.1-rc.5` → **`0.2.2-rc.1`**（nightly feed，`releaseDate 2026-11-04T09:31:49Z`；
+`deepseek-harness-0.2.2-rc.1-win-x64.exe`，293,425,336 B / 280 MiB）。
+SHA512 与 feed 一致（`swcK0J…Uifw==`）、Authenticode 签名有效（Hangzhou DeepSeek）。
+
+### 本轮的新发现：**升包顺序错了会立刻静默掉插件**
+
+`@deepseek-ai/dsh-llm-pi-ai` / `dsh-subagent-codex` / `dsh-subagent-claude-code`
+的 peer 是**精确锁定当轮运行时**（`0.2.2-rc.1` 的 peer 全写 `0.2.2-rc.1`）。所以：
+**先把包升到 0.2.2-rc.1、本体还在 0.2.1-rc.5，这 3 个包当场进 `skippedBundles`**
+（浏览器工具、subagent、自定义供应商一起消失）。**正确顺序＝先装本体，再跑 pnpm。**
+
+### 准入矩阵的离线预演（不用重启就能判定，强烈推荐）
+
+`app.asar` 里 `@deepseek-ai/dsh-app-boot/lib/index.js` 导出了
+`getDshRuntimeVersion` / `loadProfileDirectory` / `generateConfigSchema`，可以
+**用新包自己的 app-boot 去加载当前 profile**，在装本体之前就拿到「哪些 bundle 会被跳过」：
+
+```js
+// ELECTRON_RUN_AS_NODE=1 "<新解包>\DeepSeek Harness.exe" preflight.mjs "<新>\resources\app.asar" "<profile>"
+const mod = await import(pathToFileURL(join(ASAR,'dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js')).href);
+const profile = mod.loadProfileDirectory('dsh', PROFILE, join(ASAR,'dsh/node_modules/@deepseek-ai/dsh/package.json'), { userLayer: true });
+// profile.skippedBundles = 会被跳过的包（含 reason）；schema = await mod.generateConfigSchema(profile, layers, anchor)
+```
+
+本机实测：升级前 `skipped=2`（两个 subagent 的旧版对着新运行时）→
+升级后 `skipped=0`、`loadedBundles=28`、composed entries 232 → 242。
+**注意** `desktop` profile 被 Electron 独占，`dsh --profile desktop --dump-config` 会被拒，
+只能用上面这种直接 import 的方式。
+
+### 本轮实装结果
+
+| 包 | 旧 | 新 | 路径 |
+|---|---|---|---|
+| `DeepSeek Harness.exe` / `app.asar` | 0.2.1-rc.5 | **0.2.2-rc.1** | 客户端本体（NSIS 安装器） |
+| `@deepseek-ai/dsh-llm-pi-ai` | 0.2.1-rc.5 | **0.2.2-rc.1** | 改 `package.json` + pnpm |
+| `@deepseek-ai/dsh-subagent-codex` | 0.2.1-rc.5 | **0.2.2-rc.1** | 同上 |
+| `@deepseek-ai/dsh-subagent-claude-code` | 0.2.1-rc.5 | **0.2.2-rc.1** | 同上 |
+| `@linxin666/dsh-client-ui-skill-explorer` | 0.4.14 | **0.4.15** | 同上（0.4.15 的 peer 写 `@deepseek-ai/dsh@>=0.2.2-rc.1`） |
+| `@linxin666/dsh-remote-web-ui` | 0.4.14 | **0.4.15** | 同上（该行仍 `disabled: true`） |
+
+`compatibility.json` 变成 **2 条**：eye-care 的数组追加 `0.2.2-rc.1`；
+**新增 `dsh-browser-cdp@1.7.5`** —— 它 `engines.dsh` 是**穷举**到 `0.2.1-rc.5` 为止，
+npm 上 73 个版本里**没有一个**写了 0.2.2（最新 1.7.10 也止步 rc.5），只能豁免。
+
+### 安装器：静默 `/S` 依旧不可靠
+
+同 rc.3 那次：`/S` 会失败（`installer-logs/directory-failure-*.log` 报
+`MoveFileExW` → Windows error 5），**可见安装器一次成功**。装前必须把
+`DeepSeek Harness.exe`、`crashpad_handler.exe` 全部退干净（渲染/GPU/utility 子进程也算），
+并把 `%LOCALAPPDATA%\@deepseek-aidsh-desktop-updater` 里 **rc.5 的 pending 安装包挪走**
+（否则 electron-updater 下次会拿旧包过来）。
+
+### 客户端外壳的变化（不涉及配置，但要知道）
+
+- 新增 22 个内置包，含 `@deepseek-ai/dsh-official-bundles`（bundle 清单从此**从包里读**，
+  不再硬编码在 app-boot）、`dsh-experimental-forge*`、`dsh-experimental-liveshare`、
+  `dsh-action-cards`、`dsh-fs-patch`、`dsh-personalized-recommendations`、
+  `dsh-tool-executor-native` / `-ptc`。
+- 移除 1 个：`@deepseek-ai/dsh-client-ui-deepseek-model-label-1017`。
+  → **profile 里没有任何 bundle / patch 引用它，无需处理。**
+- `RETIRED_BUNDLES` 仍是 `@deepseek-ai/dsh-experimental-schedule-bundle` 一条，没变。
+- profile patch 里引用的 16 个 `name:` 全部仍在（`dsh-wsl-tool` 用的 `file:///` 直连也有效）。
+
+### 回滚与验证
+
+- 备份：`~/Downloads/dsh-022rc1-backup-<ts>/`（`package.json` / `pnpm-lock.yaml` /
+  `cordis.patch.yml` / `compatibility.json` / 机器级 patch / `.credentials.yaml`）。
+- 安装包留在 `%TEMP%\dsh-upgrade-022rc1\`（含已校验的 exe 与 7z 解包副本）——
+  **回滚＝退客户端→跑 `deepseek-harness-0.2.1-rc.5-win-x64.exe`**（旧包在
+  `@deepseek-aidsh-desktop-updater\pending\` 里也有一份，本轮挪到了 `updater-cache-stale\`）。
+- 验证判据：`(Get-Item "<app>\DeepSeek Harness.exe").VersionInfo.FileVersion` = `0.2.2-rc.1`；
+  `dsh --version`（走 `resources\runtime\cli\bin\dsh.cmd`）= `0.2.2-rc.1`；
+  宿主进程里出现 `cdp-cast-worker`；会话里 `bcdp_*` / `subagent_*` 工具在；
+  `agent-default-model` 仍是升级前那个（`opendesign / deepseek-v4.1-flash`）。
 
 ## 🔴 0.2.1-rc.5 升级（2026-11-04）：这次靠**升级插件**解决，不再堆豁免
 
